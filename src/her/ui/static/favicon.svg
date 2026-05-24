@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="orb" cx="38%" cy="30%" r="65%">
+      <stop offset="0%"   stop-color="#f7eaff"/>
+      <stop offset="38%"  stop-color="#c5a4ff"/>
+      <stop offset="72%"  stop-color="#7a4fd8"/>
+      <stop offset="100%" stop-color="#2a1456"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="55%"  stop-color="#b388ff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#b388ff" stop-opacity="0.45"/>
+    </radialGradient>
+  </defs>
+  <!-- soft outer halo -->
+  <circle cx="32" cy="32" r="30" fill="url(#halo)"/>
+  <!-- main orb -->
+  <circle cx="32" cy="32" r="20" fill="url(#orb)"/>
+  <!-- tiny inner pulse highlight -->
+  <circle cx="26" cy="24" r="4" fill="#ffffff" opacity="0.55"/>
+</svg>

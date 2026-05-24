@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0d10" />
+  <title>her</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <span>her</span>
+      <span class="subtitle" id="cfg-line">…</span>
+    </div>
+    <div class="controls">
+      <div class="indicators" id="indicators">
+        <span class="ind" data-key="listening">listening</span>
+        <span class="ind" data-key="seeing">seeing</span>
+        <span class="ind" data-key="thinking">thinking</span>
+        <span class="ind" data-key="speaking">speaking</span>
+      </div>
+      <select id="lang-select" title="Lingua di Samantha (applicata alla prossima sessione)"></select>
+      <button id="toggle-btn">Start</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="terminal" id="terminal" aria-live="polite"></section>
+  </main>
+
+  <section class="input-bar">
+    <form id="text-form" autocomplete="off">
+      <span class="prompt">›</span>
+      <input id="text-input" type="text" autocomplete="off" spellcheck="false"
+             placeholder="…" disabled />
+      <button id="send-btn" type="submit" disabled>send</button>
+    </form>
+  </section>
+
+  <footer>
+    <span id="status-line">disconnesso</span>
+    <span id="a11y-badge" class="a11y-badge" hidden aria-live="polite"></span>
+  </footer>
+
+  <!-- Hidden — webcam is captured silently. Samantha "sees" without showing. -->
+  <video id="cam" autoplay playsinline muted hidden></video>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

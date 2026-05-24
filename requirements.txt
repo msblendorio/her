@@ -1,0 +1,41 @@
+# Runtime dependencies for `her`.
+# Kept in sync with `pyproject.toml`. The canonical source is pyproject —
+# this file exists for users who prefer `pip install -r requirements.txt`.
+
+# Web server
+fastapi>=0.115
+uvicorn[standard]>=0.32
+websockets>=13.0
+
+# Config / data
+python-dotenv>=1.0
+pydantic>=2.9
+pydantic-settings>=2.6
+
+# Core
+numpy>=1.26
+pillow>=10.4
+httpx>=0.27
+
+# Vision (local Moondream2)
+torch>=2.4
+# transformers 5.x renamed internal `_tied_weights_keys` -> `all_tied_weights_keys`,
+# which breaks vikhyatk/moondream2 remote code. Keep on the 4.x line.
+transformers>=4.46,<5
+einops>=0.8
+accelerate>=1.1
+
+# Agentic: web search (no API key needed)
+ddgs>=6.0
+
+# Accessibility mode: on-device screen OCR via Apple Vision framework.
+# macOS-only; harmless to keep installed on other platforms (it just won't
+# be importable there and the assistant will fall back to Moondream).
+pyobjc-framework-Vision>=10.3 ; sys_platform == "darwin"
+
+# Calendar access via macOS EventKit (reflects Google Calendar when the
+# Google account is set up in System Settings → Internet Accounts).
+pyobjc-framework-EventKit>=10.3 ; sys_platform == "darwin"
+
+# Optional: V-JEPA real integration (uncomment when wiring up world_model.py)
+# timm>=1.0

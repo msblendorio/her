@@ -1,0 +1,22 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.idea/
+.vscode/
+dist/
+build/
+*.egg-info/
+# Hugging Face cache (Moondream weights live here on first run)
+.cache/
+hf_cache/
+# Persistent session memory (contains conversation summaries)
+data/
+
+.claude/
+todo.md
