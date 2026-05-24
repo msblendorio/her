@@ -10,10 +10,12 @@
 glances at your screen on request, searches the web, opens apps and URLs,
 and remembers what you discussed across sessions.*
 
-[version](./pyproject.toml)
-[license](./LICENSE)
-[python](https://www.python.org/)
-[platform](#requirements)
+<p align="center">
+  <a href="./pyproject.toml"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="version" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.13%2B-blue" alt="python" /></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="platform" /></a>
+</p>
 
 
 
