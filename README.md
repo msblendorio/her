@@ -1,37 +1,23 @@
-<p align="center">
-  <img src="./her.jpg" alt="her" width="640" />
-</p>
-
-# her
-
-**A *"Her"*-style multimodal assistant for your Mac.**
+**A "HER" movie style multimodal assistant for your Mac.**
 
 *She talks with a natural voice, hears you, watches through the webcam,
 glances at your screen on request, searches the web, opens apps and URLs,
-and remembers what you discussed across sessions.*
-
-<p align="center">
-  <a href="./pyproject.toml"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="version" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license" /></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.13%2B-blue" alt="python" /></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="platform" /></a>
-</p>
-
-
+and remembers what you discussed across sessions. She listens with empathy,
+picks up on your mood, and responds with warmth — more companion than tool.*
 
 ---
 
 ## Highlights
 
 
-|                       |                                                                                                                                                                                                                                    |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Voice & reasoning** | OpenAI Realtime API (`gpt-realtime-mini` by default, voice `shimmer`)                                                                                                                                                              |
-| **Vision**            | Local Moondream2 captions the webcam every few seconds and injects the scene into the live session — the webcam feed itself is never shown in the UI (*"sees without showing"*)                                                    |
-| **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                 |
-| **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                          |
-| **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                       |
-| **UI**                | Single browser page with a Claude-Code-style rolling terminal, a text input bar so you can type and speak in parallel, live status indicators (`listening / seeing / thinking / speaking`), running cost in the footer, and a language selector (it / en / es / fr / de — default Italian) |
+|                       |                                                                                                                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Voice & reasoning** | OpenAI Realtime API (`gpt-realtime-mini` by default, voice `shimmer`)                                                                                                                                                                                   |
+| **Vision**            | Local Moondream2 captions the webcam every few seconds and injects the scene into the live session — the webcam feed itself is never shown in the UI (*"sees without showing"*)                                                                         |
+| **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                                      |
+| **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                                               |
+| **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
+| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, real-time status indicators (`listening / seeing / thinking / speaking`), running cost in the footer, and a language selector (it / en / es / fr / de — default Italian) |
 
 
 > The assistant is **session-based**: nothing runs until you open the page
@@ -82,14 +68,12 @@ grant microphone + webcam permissions.
 
 **First-launch notes**
 
-- Moondream2 weights (~~3.7 GB) download to `~~/.cache/huggingface`on the first vision caption. You can skip vision entirely with`VISION_ENABLED=false`.
+- Moondream2 weights (~3.7 GB) download to `~/.cache/huggingface` on the first vision caption. You can skip vision entirely with `VISION_ENABLED=false`.
 - macOS will pop a few permission dialogs the first time she uses a
 given capability — see [macOS permissions](#macos-permissions) below.
 - The `gpt-realtime-mini` model and Whisper transcription are multilingual:
 the language picker affects her persona and the UI; voice and
 transcription auto-adapt.
-
-
 
 ---
 
@@ -101,13 +85,13 @@ page loads, but mobile browsers refuse mic/webcam over plain `http://`
 — **Start** fails silently. Two options:
 
 - **LAN only** — fine for previewing the UI from a second device. Set
-  `HOST=127.0.0.1` in `.env` when you don't need remote access; otherwise
-  the server is exposed to everyone on the Wi-Fi (no auth).
+`HOST=127.0.0.1` in `.env` when you don't need remote access; otherwise
+the server is exposed to everyone on the Wi-Fi (no auth).
 - **ngrok** (recommended for phones) — `brew install ngrok`, authenticate
-  once, then `ngrok http 8765` in a second terminal. The `https://…ngrok-free.app`
-  URL works anywhere and unlocks mic/webcam. Audio/video transit ngrok;
-  the OpenAI key stays on your Mac. Stop ngrok when done — anyone with
-  the URL can reach Samantha.
+once, then `ngrok http 8765` in a second terminal. The `https://…ngrok-free.app`
+URL works anywhere and unlocks mic/webcam. Audio/video transit ngrok;
+the OpenAI key stays on your Mac. Stop ngrok when done — anyone with
+the URL can reach Samantha.
 
 Alternatives: **Cloudflare Tunnel** (same shape, no warning page, needs a
 domain) or **mkcert + uvicorn TLS** for a fully local HTTPS setup
@@ -115,7 +99,7 @@ domain) or **mkcert + uvicorn TLS** for a fully local HTTPS setup
 
 ---
 
-## What you can ask her to do
+## What can you ask Samantha to do
 
 
 | You say…                                        | What happens                                                  |
@@ -308,15 +292,15 @@ async def web_search(query: str, max_results: int = 5) -> dict:
 That's it. The decorator derives everything the OpenAI Realtime API needs:
 
 
-| From                                                                           | What it becomes                                |
-| ------------------------------------------------------------------------------ | ---------------------------------------------- |
-| Function name                                                                  | Tool name (override with `@tool(name="…")`)    |
-| Type hints (`str`, `int`, `bool`, `list[str]`, `Literal["a","b"]`, `X | None`) | JSON-schema `type` / `enum` / `items`          |
-| Parameters without a default                                                   | `"required"` list                              |
-| First paragraph of the docstring                                               | Tool description shown to the model            |
-| Each `Args:` entry                                                             | Per-parameter description                      |
-| `safe=False`                                                                   | Mark the tool as needing confirmation          |
-| `params={"x": {"minimum": 0, "maximum": 100}}`                                 | Extra JSON-schema fields merged into param `x` |
+| From                                                                  | What it becomes                                |
+| --------------------------------------------------------------------- | ---------------------------------------------- |
+| Function name                                                         | Tool name (override with `@tool(name="…")`)    |
+| Type hints (`str`, `int`, `bool`, `list[str]`, `Literal["a","b"]`, `X | None`)                                         |
+| Parameters without a default                                          | `"required"` list                              |
+| First paragraph of the docstring                                      | Tool description shown to the model            |
+| Each `Args:` entry                                                    | Per-parameter description                      |
+| `safe=False`                                                          | Mark the tool as needing confirmation          |
+| `params={"x": {"minimum": 0, "maximum": 100}}`                        | Extra JSON-schema fields merged into param `x` |
 
 
 If the function is in a domain file that's already wired in
@@ -405,17 +389,7 @@ print(json.dumps(by_name('your_tool_name').to_openai_spec(), indent=2))
 
 ---
 
-## Stopping / restarting
-
-```bash
-# stop
-pkill -f .venv/bin/her
-
-# start again
-.venv/bin/her           # or: ./run.sh
-```
-
-### Wiping the memory
+## Wiping the memory
 
 To erase everything she remembers from past sessions:
 
@@ -439,16 +413,8 @@ contributions are licensed.
 
 ## License & disclaimer
 
-Released under the [MIT License](LICENSE). You can use, modify, and
-redistribute it freely (including commercially); the copyright notice
+Released under the [MIT License](LICENSE). You can use, modify, and  
+redistribute it freely (including commercially); the copyright notice  
 must be preserved.
 
-> **Heads up:** distribute with care. She can act on your machine, see your
-> screen, and uses third-party APIs. Audit the registered tools (run
-> `python -c "from her.agentic import TOOLS; [print(t.name, t.safe) for t in TOOLS]"`)
-> before exposing it to untrusted users.
-
-
-
 *Made on a Mac, for a Mac.*
-
