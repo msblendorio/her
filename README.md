@@ -31,7 +31,7 @@ and remembers what you discussed across sessions.*
 | **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                 |
 | **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                          |
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                       |
-| **UI**                | Single browser page with a Claude-Code-style rolling terminal, live status indicators (`listening / seeing / thinking / speaking`), running cost in the footer, and a language selector (it / en / es / fr / de — default Italian) |
+| **UI**                | Single browser page with a Claude-Code-style rolling terminal, a text input bar so you can type and speak in parallel, live status indicators (`listening / seeing / thinking / speaking`), running cost in the footer, and a language selector (it / en / es / fr / de — default Italian) |
 
 
 > The assistant is **session-based**: nothing runs until you open the page
@@ -95,78 +95,23 @@ transcription auto-adapt.
 
 ## Accessing from another device
 
-The server now binds to `0.0.0.0` by default, so it answers on every network
-interface — not just `localhost`. That's enough to reach it from a phone,
-tablet, or laptop on the **same Wi-Fi**, but mobile browsers refuse to give
-microphone or webcam access over plain `http://` (the only exception is
-`http://localhost`), so without HTTPS the page loads but **Start** fails
-silently. Pick one of the two setups below.
+The server binds to `0.0.0.0`, so any device on the same Wi-Fi can reach
+`http://<mac-lan-ip>:8765` (find it with `ipconfig getifaddr en0`). The
+page loads, but mobile browsers refuse mic/webcam over plain `http://`
+— **Start** fails silently. Two options:
 
-### Option A — LAN only (no HTTPS, page loads but mic/webcam blocked on phones)
+- **LAN only** — fine for previewing the UI from a second device. Set
+  `HOST=127.0.0.1` in `.env` when you don't need remote access; otherwise
+  the server is exposed to everyone on the Wi-Fi (no auth).
+- **ngrok** (recommended for phones) — `brew install ngrok`, authenticate
+  once, then `ngrok http 8765` in a second terminal. The `https://…ngrok-free.app`
+  URL works anywhere and unlocks mic/webcam. Audio/video transit ngrok;
+  the OpenAI key stays on your Mac. Stop ngrok when done — anyone with
+  the URL can reach Samantha.
 
-Useful to see the UI from a second device, not to actually talk to Samantha
-from the phone.
-
-1. Find your Mac's LAN IP:
-  ```bash
-   ipconfig getifaddr en0      # Wi-Fi; try en1 if en0 is empty
-  ```
-2. Start the server as usual (`./run.sh`).
-3. On the other device, open `http://<mac-lan-ip>:8765`.
-4. macOS will likely show a firewall prompt the first time — allow incoming
-  connections for `python` / `uvicorn`.
-
-> ⚠️ Binding to `0.0.0.0` exposes the server to **everyone on the Wi-Fi**.
-> There is no authentication in the code. On a home network that's usually
-> fine; on a café/coworking/hotel Wi-Fi it is not. Revert to
-> `HOST=127.0.0.1` in `.env` when you don't need remote access.
-
-### Option B — ngrok (HTTPS, mic + webcam work from anywhere)
-
-This is the recommended path if you actually want to talk to Samantha from
-your phone. ngrok terminates TLS for you, so the phone's browser sees a
-valid `https://` origin and allows `getUserMedia`. Works on any network,
-not just the same Wi-Fi.
-
-1. Install ngrok and authenticate it once:
-  ```bash
-   brew install ngrok
-   ngrok config add-authtoken <your-token>     # from dashboard.ngrok.com
-  ```
-2. Start Samantha as usual:
-  ```bash
-   ./run.sh
-  ```
-3. In a second terminal, open the tunnel:
-  ```bash
-   ngrok http 8765
-  ```
-   ngrok prints a forwarding URL like
-   `https://something-something.ngrok-free.app` — open that on your phone,
-   accept the mic + webcam permission prompts, and press **Start**.
-
-Trade-offs to be aware of:
-
-- All traffic transits ngrok's infrastructure. The OpenAI key never leaves
-your Mac (the browser only talks to ngrok → Samantha → OpenAI), but the
-audio/video frames do pass through the tunnel.
-- The free plan rotates the public URL on every restart. `ngrok config`
-with a reserved domain (paid) keeps it stable.
-- The free plan also injects a one-time browser warning page on the first
-visit — click through it once per device.
-- ngrok bypasses the LAN-only safety of `127.0.0.1`. While the tunnel is
-up, **anyone with the URL can reach Samantha**. Stop ngrok (`Ctrl-C`)
-when you're done.
-
-### Alternatives
-
-- **Cloudflare Tunnel** (`cloudflared`) — same shape as ngrok, free, no
-ngrok-branded warning page. Needs a Cloudflare account and a domain.
-- **mkcert + uvicorn TLS** — stays in LAN, no third party. Generate a
-local cert with `mkcert <mac-lan-ip>`, install the mkcert root CA on
-the phone, then pass `--ssl-keyfile` / `--ssl-certfile` to uvicorn (the
-`uvicorn.run(...)` call lives in `src/her/main.py`). More setup, but
-zero external dependency.
+Alternatives: **Cloudflare Tunnel** (same shape, no warning page, needs a
+domain) or **mkcert + uvicorn TLS** for a fully local HTTPS setup
+(`--ssl-keyfile` / `--ssl-certfile` in `src/her/main.py`).
 
 ---
 
@@ -241,49 +186,6 @@ simply ask:
 accessibility mode), explain when each is useful, and tell the user how
 to activate them. This is the recommended onboarding path for visually
 impaired users who can't read the documentation.
-
----
-
-## Project layout
-
-```text
-src/her/
-├── main.py                   # uvicorn entrypoint
-├── config.py                 # env-driven settings
-├── i18n.py                   # 5-language prompts (it / en / es / fr / de)
-├── core/
-│   ├── event_bus.py          # tiny async pub/sub
-│   ├── state.py              # shared session snapshot (status + usage)
-│   ├── usage.py              # token & cost tracker for the running session
-│   └── orchestrator.py       # wires perception ↔ reasoning ↔ memory
-├── perception/
-│   ├── vision_capture.py     # receives JPEG frames from the browser
-│   ├── vision_scene.py       # singleton Moondream2 captioner
-│   └── world_model.py        # V-JEPA 2 stub interface
-├── reasoning/
-│   └── realtime_session.py   # OpenAI Realtime WS client (GA shape)
-├── memory/
-│   ├── store.py              # append-only JSONL of session summaries
-│   ├── collector.py          # accumulates the live transcript
-│   ├── summarizer.py         # OpenAI Chat call (cheap) at session end
-│   └── recall.py             # injects past summaries into next session
-├── agentic/
-│   ├── registry.py           # @tool decorator + schema introspection
-│   ├── __init__.py           # imports domain modules to trigger registration
-│   ├── macos.py              # @tool functions: open_app, open_url, …
-│   ├── calendar.py           # @tool functions: calendar_list/search/create_event
-│   ├── email.py              # @tool functions: email_list_unread, email_search, email_send
-│   ├── screen.py             # @tool functions: look_at_screen, read_screen
-│   ├── web.py                # @tool functions: web_search
-│   ├── accessibility.py      # @tool function: toggle_accessibility_mode
-│   ├── ocr.py                # Apple Vision OCR backend (used by screen.py)
-│   ├── tools.py              # back-compat facade re-exporting TOOLS
-│   └── executor.py           # dispatches model-issued tool calls
-├── server/
-│   ├── app.py                # FastAPI app + REST endpoints
-│   └── ws.py                 # WebSocket bridges (audio / vision / events)
-└── ui/static/                # HTML / CSS / JS frontend
-```
 
 ---
 
