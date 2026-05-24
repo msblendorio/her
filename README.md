@@ -1,6 +1,6 @@
-
-
-
+<p align="center">
+  <img src="./her.jpg" alt="her" width="640" />
+</p>
 
 # her
 
@@ -55,7 +55,7 @@ To open from another device on the same Wi-Fi, see
 
 ```bash
 # 1. Clone & enter the project
-git clone https://github.com/<your-fork>/her.git
+git clone https://github.com/msblendorio/her.git
 cd her
 
 # 2. Create and activate a virtualenv
