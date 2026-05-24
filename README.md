@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./her.jpg" alt="her" width="640" />
+</p>
+
 **A "HER" movie style multimodal assistant for your Mac.**
 
 *She talks with a natural voice, hears you, watches through the webcam,
