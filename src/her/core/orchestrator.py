@@ -12,8 +12,10 @@ import logging
 from time import monotonic
 
 from ..agentic.screen import read_screen
+from ..agentic.skills.runtime import store as skill_store
 from ..config import settings
 from ..i18n import resolve as resolve_lang
+from ..perception.location import detect_location
 from ..memory.character import CharacterProfile, CharacterStore, refine_character
 from ..memory.collector import TranscriptCollector
 from ..memory.recall import build_recall_block
@@ -37,6 +39,7 @@ class Orchestrator:
         self.realtime: RealtimeSession | None = None
         self._vision_task: asyncio.Task | None = None
         self._screen_task: asyncio.Task | None = None
+        self._skills_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         # The world model is built once and kept around; the app does not yet
         # consume its outputs, but the hook is here for when V-JEPA is wired in.
@@ -96,12 +99,29 @@ class Orchestrator:
             # prompt rather than pushed afterwards.
             self._character = self.character_store.load() if self.character_store else None
 
+            # Resolve location in a worker thread before connect(), so
+            # the (sync) lookup inside the system-prompt builder finds a
+            # hot cache and doesn't block the event loop. Tries Apple
+            # Core Location first (accurate, may trigger a one-time TCC
+            # permission prompt), falls back to IP geolocation. Cached
+            # process-wide after the first call.
+            await asyncio.to_thread(detect_location)
+
+            # Snapshot of user-taught skills, surfaced in the system
+            # prompt so Samantha can call them by name.
+            try:
+                learned_skills = await asyncio.to_thread(skill_store.list_skills)
+            except Exception:
+                log.exception("skills: could not load index, starting empty")
+                learned_skills = []
+
             self.realtime = RealtimeSession(
                 language=self._session_language,
                 extra_instructions=extra,
                 accessibility=start_with_a11y,
                 character_profile=self._character,
                 empathy_mood="calm",
+                learned_skills=learned_skills,
             )
             await self.realtime.connect()
 
@@ -114,6 +134,12 @@ class Orchestrator:
                 self._empathy_task = asyncio.create_task(
                     self._forward_empathy_changes(), name="empathy-forward"
                 )
+
+            # Refresh the in-prompt skill index whenever a new skill is
+            # taught mid-session.
+            self._skills_task = asyncio.create_task(
+                self._forward_skill_updates(), name="skills-forward"
+            )
 
             # Begin collecting the new transcript for end-of-session summary.
             if self.memory_store is not None:
@@ -164,6 +190,14 @@ class Orchestrator:
                     pass
                 self._screen_task = None
             state.accessibility = False
+
+            if self._skills_task is not None:
+                self._skills_task.cancel()
+                try:
+                    await self._skills_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                self._skills_task = None
 
             # Tear down the empathy tracker before the collector so it
             # releases its subscription to realtime.user_text first.
@@ -276,6 +310,26 @@ class Orchestrator:
             raise
         finally:
             bus.unsubscribe("empathy.changed", q)
+
+    async def _forward_skill_updates(self) -> None:
+        """When a new skill is saved mid-session, re-push the system
+        prompt so Samantha sees the updated skill index right away.
+        """
+        q = bus.subscribe("skills.saved")
+        try:
+            while True:
+                await q.get()
+                if self.realtime is None:
+                    continue
+                try:
+                    skills = await asyncio.to_thread(skill_store.list_skills)
+                    await self.realtime.set_learned_skills(skills)
+                except Exception:
+                    log.exception("skills: failed to refresh prompt index")
+        except asyncio.CancelledError:
+            raise
+        finally:
+            bus.unsubscribe("skills.saved", q)
 
     async def _refine_and_save_character(self, turns: list[tuple[str, str]]) -> None:
         if self.character_store is None:

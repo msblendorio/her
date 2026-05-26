@@ -34,10 +34,12 @@ from ..core.usage import usage
 from ..i18n import (
     accessibility_addendum,
     empathy_addendum,
+    learned_skills_addendum,
     resolve as resolve_lang,
     scene_prefix,
     screen_prefix,
     system_prompt,
+    time_space_awareness,
 )
 from ..memory.character import CharacterProfile
 
@@ -54,6 +56,7 @@ class RealtimeSession:
         accessibility: bool = False,
         character_profile: CharacterProfile | None = None,
         empathy_mood: str = "calm",
+        learned_skills: list[dict] | None = None,
     ) -> None:
         self._ws: ClientConnection | None = None
         self._recv_task: asyncio.Task | None = None
@@ -72,6 +75,10 @@ class RealtimeSession:
         # directive without dropping the connection.
         self._character = character_profile
         self._empathy_mood = empathy_mood or "calm"
+        # Snapshot of skills the user has taught, surfaced in the system
+        # prompt so the model can invoke them. Updated by the orchestrator
+        # at session start (and after each successful skill recording).
+        self._learned_skills = list(learned_skills or [])
         # In-flight function calls. Keyed by call_id (set by the model). The
         # value is {"name": str, "args": str} accumulated across deltas.
         self._pending_calls: dict[str, dict[str, str]] = {}
@@ -169,6 +176,10 @@ class RealtimeSession:
 
     def _build_instructions(self) -> str:
         parts = [system_prompt(self.language)]
+        # Time/space awareness is re-evaluated on each call so the date and
+        # local time stay fresh whenever the session is re-pushed (e.g. on
+        # accessibility/empathy updates).
+        parts.append(time_space_awareness(self.language))
         if self._extra_instructions:
             parts.append(self._extra_instructions)
         if self._accessibility:
@@ -177,7 +188,30 @@ class RealtimeSession:
         # session) the mood directive alone is useful, and on subsequent
         # sessions the profile block kicks in too.
         parts.append(empathy_addendum(self._character, self._empathy_mood, self.language))
+        # Learned skills (if any): emit the index so the model knows what
+        # it can run_skill() — nothing appended on a fresh install.
+        skills_block = learned_skills_addendum(self._learned_skills, self.language)
+        if skills_block:
+            parts.append(skills_block)
         return "\n\n".join(parts)
+
+    async def set_learned_skills(self, skills: list[dict]) -> None:
+        """Refresh the in-prompt skill index and re-push instructions.
+
+        Called by the orchestrator after a new skill is saved so the
+        model can invoke it immediately without waiting for the next
+        session.
+        """
+        new = list(skills or [])
+        if new == self._learned_skills:
+            return
+        self._learned_skills = new
+        if self._ws is None:
+            return
+        await self._send_event({
+            "type": "session.update",
+            "session": {"type": "realtime", "instructions": self._build_instructions()},
+        })
 
     async def set_accessibility(self, on: bool) -> None:
         """Toggle the accessibility addendum and push it to the live session."""

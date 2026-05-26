@@ -58,5 +58,12 @@ class Settings(BaseSettings):
     empathy_enabled: bool = True
     character_path: str = "data/character.json"
 
+    # Skill learning. Samantha can record the user's clicks/shortcuts on
+    # demand and have a cheap chat model compile the trace into an
+    # AppleScript that replays the same intent. Stored per-skill under
+    # ``skills_path``; the model used for compilation must be vision-capable.
+    skills_path: str = "data/skills"
+    skills_compiler_model: str = "gpt-4o-mini"
+
 
 settings = Settings()

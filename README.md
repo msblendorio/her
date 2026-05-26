@@ -31,7 +31,35 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 
 ---
 
-## Requirements
+## Install on Mac (the easy way)
+
+**No terminal, no Python, no setup.** Just download a `.dmg`, drag, and run.
+
+1. **Download** the latest `Her-<version>.dmg` from the
+   [Releases page](https://github.com/msblendorio/her/releases/latest).
+2. **Open** the DMG and drag `Her` onto `Applications`. Eject the disk image.
+3. **First launch:** right-click `Her.app` → **Open** (only this once —
+   the bundle is ad-hoc signed, so macOS Gatekeeper asks for confirmation).
+4. A small window appears asking for your **OpenAI API key** — paste it once
+   (get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys))
+   and you're done.
+
+After that, Samantha runs as a normal Mac app: native window, Dock icon,
+mic/webcam/calendar prompts come from `Her.app` itself the first time each
+capability is used. Everything stays on your Mac except the live audio/video
+stream sent to the OpenAI Realtime API. Your data — API key, conversation
+memory, learned preferences — lives in `~/Library/Application Support/Her/`.
+
+> **For developers** who want to hack on the code, run from source, or build
+> the DMG locally, see [Run from source](#run-from-source) and
+> [Building the DMG](#building-the-dmg) below.
+
+---
+
+## Requirements (for source install only)
+
+These apply if you're running from source. The `.dmg` install above has none
+of these prerequisites — Python and all dependencies ship inside the app.
 
 - macOS (the agentic tools use `osascript`, `screencapture`, and `open`)
 - Python **3.13+**
@@ -43,7 +71,7 @@ To open from another device on the same Wi-Fi, see
 
 ---
 
-## Quick start
+## Run from source
 
 ```bash
 # 1. Clone & enter the project
@@ -78,6 +106,28 @@ given capability — see [macOS permissions](#macos-permissions) below.
 - The `gpt-realtime-mini` model and Whisper transcription are multilingual:
 the language picker affects her persona and the UI; voice and
 transcription auto-adapt.
+
+---
+
+## Building the DMG
+
+This is the build path the public release artifact comes from. Run from a
+clean checkout with the `[desktop]` extra installed:
+
+```bash
+brew install create-dmg               # one-time
+pip install -e ".[desktop]"           # adds py2app
+./scripts/build-dmg.sh                # produces dist/Her-<version>.dmg
+```
+
+Quick iteration:
+
+- `./scripts/build-dmg.sh --app-only` — rebuild just `dist/Her.app`, skip the DMG
+- `./scripts/build-dmg.sh --dmg-only` — rewrap the existing `.app` into a fresh DMG
+
+`dist/Her-<version>.dmg` is a build artifact and is gitignored — publish it
+as a GitHub *release asset* (Releases → Draft a new release → attach the
+`.dmg`) rather than committing it to the repo.
 
 ---
 

@@ -28,6 +28,10 @@ accelerate>=1.1
 # Agentic: web search (no API key needed)
 ddgs>=6.0
 
+# Skill learning: global mouse/keyboard event capture during recording.
+# Requires macOS Accessibility permission at runtime.
+pynput>=1.7
+
 # Accessibility mode: on-device screen OCR via Apple Vision framework.
 # macOS-only; harmless to keep installed on other platforms (it just won't
 # be importable there and the assistant will fall back to Moondream).
@@ -36,6 +40,14 @@ pyobjc-framework-Vision>=10.3 ; sys_platform == "darwin"
 # Calendar access via macOS EventKit (reflects Google Calendar when the
 # Google account is set up in System Settings → Internet Accounts).
 pyobjc-framework-EventKit>=10.3 ; sys_platform == "darwin"
+
+# Native location resolution via Apple Core Location (Wi-Fi triangulation).
+# Triggers a one-time TCC permission prompt on first use.
+pyobjc-framework-CoreLocation>=10.3 ; sys_platform == "darwin"
+
+# Desktop wrapper: native macOS window that hosts the local UI. Used by the
+# packaged Her.app launcher in desktop/launcher.py.
+pywebview>=5.0 ; sys_platform == "darwin"
 
 # Optional: V-JEPA real integration (uncomment when wiring up world_model.py)
 # timm>=1.0

@@ -26,15 +26,23 @@ dependencies = [
     "accelerate>=1.1",
     # Agentic: web search (no API key needed)
     "ddgs>=6.0",
+    # Skill learning: global mouse/keyboard event capture during recording.
+    # Requires macOS Accessibility permission at runtime.
+    "pynput>=1.7",
     # Accessibility mode: on-device screen OCR via Apple Vision framework.
     "pyobjc-framework-Vision>=10.3; sys_platform == 'darwin'",
     "pyobjc-framework-EventKit>=10.3; sys_platform == 'darwin'",
+    "pyobjc-framework-CoreLocation>=10.3; sys_platform == 'darwin'",
+    # Desktop wrapper: native macOS window that hosts the local UI.
+    "pywebview>=5.0; sys_platform == 'darwin'",
     # Optional: V-JEPA real integration (kept commented, see world_model.py)
     # "timm>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = ["ruff>=0.7", "pytest>=8.3", "pytest-asyncio>=0.24"]
+# Build-time tools for producing the Her.app + DMG via desktop/setup_app.py.
+desktop = ["py2app>=0.28"]
 
 [project.scripts]
 her = "her.main:main"

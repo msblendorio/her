@@ -6,6 +6,12 @@ SUMMARIZER_PROMPTS — the rest of the code just calls `resolve()`.
 """
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from .perception.location import detect_location
+
 LANGUAGES: dict[str, str] = {
     "it": "Italiano",
     "en": "English",
@@ -287,6 +293,225 @@ def screen_prefix(lang: str) -> str:
 
 def accessibility_addendum(lang: str) -> str:
     return ACCESSIBILITY_ADDENDUM[resolve(lang)]
+
+
+# ── Learned-skills index ────────────────────────────────────────────────
+# When Samantha has learned any user-taught actions, the orchestrator
+# passes their metadata to the realtime session, which appends the list
+# below to the system prompt. Without this, the model has no way of
+# knowing what skills exist (and therefore which one to invoke when the
+# user asks "do that thing we learned").
+
+_LEARNED_SKILLS_HEADER: dict[str, str] = {
+    "it": (
+        "Azioni che l'utente ti ha insegnato (eseguibili con il tool "
+        "run_skill(name)):"
+    ),
+    "en": (
+        "Actions the user has taught you (invokable via run_skill(name)):"
+    ),
+    "es": (
+        "Acciones que el usuario te ha enseñado (invocables con "
+        "run_skill(name)):"
+    ),
+    "fr": (
+        "Actions que l'utilisateur t'a apprises (à invoquer via "
+        "run_skill(name)) :"
+    ),
+    "de": (
+        "Aktionen, die der Nutzer dir beigebracht hat (über "
+        "run_skill(name) ausführbar):"
+    ),
+}
+
+
+def learned_skills_addendum(skills: list[dict], lang: str) -> str:
+    """Format the list of learned skills as a system-prompt fragment.
+
+    ``skills`` items are the dicts returned by ``SkillStore.list_skills``
+    (have ``slug``, ``name``, ``summary``, ``description``). Returns the
+    empty string when there is nothing to add.
+    """
+    if not skills:
+        return ""
+    code = resolve(lang)
+    header = _LEARNED_SKILLS_HEADER[code]
+    lines: list[str] = [header]
+    for s in skills:
+        slug = s.get("slug", "")
+        label = s.get("summary") or s.get("description") or s.get("name") or slug
+        lines.append(f"- {slug}: {label}")
+    return "\n".join(lines)
+
+
+# ── Time & space awareness ───────────────────────────────────────────────
+# A short addendum injected into every system prompt so Samantha always
+# knows the current date, local time, and where the user is (inferred from
+# the system's IANA timezone). Re-evaluated on every _build_instructions()
+# call so it stays fresh whenever the session is re-pushed (accessibility/
+# empathy updates).
+
+_WEEKDAYS: dict[str, list[str]] = {
+    "it": ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
+    "en": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "es": ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
+    "fr": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
+    "de": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
+}
+
+_MONTHS: dict[str, list[str]] = {
+    "it": ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+           "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
+    "en": ["January", "February", "March", "April", "May", "June",
+           "July", "August", "September", "October", "November", "December"],
+    "es": ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+           "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+    "fr": ["janvier", "février", "mars", "avril", "mai", "juin",
+           "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
+    "de": ["Januar", "Februar", "März", "April", "Mai", "Juni",
+           "Juli", "August", "September", "Oktober", "November", "Dezember"],
+}
+
+_TIME_SPACE_TPL: dict[str, str] = {
+    "it": (
+        "Consapevolezza di tempo e luogo. Oggi è {weekday} {day} {month} {year}, "
+        "sono le {time} ora locale. {place_sentence} "
+        "Se l'utente ti chiede che giorno è, che ore sono o dove si trova, "
+        "rispondi diretta usando questi dati senza recitarli alla lettera."
+    ),
+    "en": (
+        "Time and place awareness. Today is {weekday}, {month} {day}, {year}, "
+        "and the local time is {time}. {place_sentence} "
+        "If the user asks what day it is, what time it is, or where they are, "
+        "answer directly with this info without reciting it verbatim."
+    ),
+    "es": (
+        "Consciencia de tiempo y lugar. Hoy es {weekday} {day} de {month} de {year}, "
+        "son las {time} hora local. {place_sentence} "
+        "Si el usuario pregunta qué día es, qué hora es o dónde está, "
+        "responde directamente usando estos datos sin recitarlos al pie de la letra."
+    ),
+    "fr": (
+        "Conscience du temps et du lieu. Aujourd'hui c'est {weekday} {day} {month} {year}, "
+        "il est {time} heure locale. {place_sentence} "
+        "Si l'utilisateur demande quel jour on est, quelle heure il est ou où il se trouve, "
+        "réponds directement avec ces informations sans les réciter mot pour mot."
+    ),
+    "de": (
+        "Zeit- und Ortsbewusstsein. Heute ist {weekday}, {day}. {month} {year}, "
+        "es ist {time} Ortszeit. {place_sentence} "
+        "Wenn der Nutzer fragt, welcher Tag ist, wie spät es ist oder wo er sich befindet, "
+        "antworte direkt mit diesen Angaben, ohne sie wörtlich aufzusagen."
+    ),
+}
+
+# Per-language sentence asserting the inferred location. ``where`` is the
+# resolved place string (e.g. "Roma, Italia") and the key indicates the
+# source: ``core`` = Core Location (accurate), ``ip`` = IP geolocation
+# (coarse), ``tz`` = timezone-derived (very coarse), ``utc`` = no data.
+_PLACE_SENTENCE: dict[str, dict[str, str]] = {
+    "it": {
+        "core": "L'utente si trova a {where}.",
+        "ip":   "L'utente si trova approssimativamente a {where} (stima da geolocalizzazione IP, può essere imprecisa).",
+        "tz":   "Dal fuso orario del sistema ({tz}) l'utente è in zona {where}.",
+        "utc":  "La posizione esatta non è disponibile; il sistema usa il fuso orario {tz}.",
+    },
+    "en": {
+        "core": "The user is in {where}.",
+        "ip":   "The user is roughly in {where} (estimated via IP geolocation, may be inaccurate).",
+        "tz":   "Based on the system timezone ({tz}), the user is around {where}.",
+        "utc":  "Exact location is not available; the system runs on timezone {tz}.",
+    },
+    "es": {
+        "core": "El usuario está en {where}.",
+        "ip":   "El usuario está aproximadamente en {where} (estimado vía geolocalización IP, puede ser impreciso).",
+        "tz":   "Según la zona horaria del sistema ({tz}), el usuario está cerca de {where}.",
+        "utc":  "La ubicación exacta no está disponible; el sistema usa la zona horaria {tz}.",
+    },
+    "fr": {
+        "core": "L'utilisateur se trouve à {where}.",
+        "ip":   "L'utilisateur se trouve approximativement à {where} (estimé via géolocalisation IP, peut être imprécis).",
+        "tz":   "D'après le fuseau horaire système ({tz}), l'utilisateur est vers {where}.",
+        "utc":  "La position exacte n'est pas disponible ; le système utilise le fuseau {tz}.",
+    },
+    "de": {
+        "core": "Der Nutzer befindet sich in {where}.",
+        "ip":   "Der Nutzer ist ungefähr in {where} (geschätzt per IP-Geolokalisierung, möglicherweise ungenau).",
+        "tz":   "Laut System-Zeitzone ({tz}) ist der Nutzer in der Gegend von {where}.",
+        "utc":  "Der genaue Ort ist nicht verfügbar; das System läuft in der Zeitzone {tz}.",
+    },
+}
+
+
+def _detect_local_tz_name() -> str:
+    """Best-effort IANA name of the system's local timezone.
+
+    On macOS and Linux ``/etc/localtime`` is a symlink into the system
+    zoneinfo database, so resolving it yields e.g. ``Europe/Rome``. Falls
+    back to ``$TZ`` and finally ``UTC``.
+    """
+    path = "/etc/localtime"
+    try:
+        if os.path.islink(path):
+            resolved = os.path.realpath(path)
+            marker = "zoneinfo/"
+            if marker in resolved:
+                return resolved.split(marker, 1)[1]
+    except OSError:
+        pass
+    return os.environ.get("TZ", "") or "UTC"
+
+
+def _tz_to_place(tz_name: str) -> str:
+    """Turn an IANA timezone like ``Europe/Rome`` into a coarse place hint
+    (just the city, with underscores collapsed). ``America/Argentina/
+    Buenos_Aires`` collapses to ``Buenos Aires``.
+    """
+    if "/" not in tz_name:
+        return tz_name
+    rest = tz_name.partition("/")[2]
+    return rest.split("/")[-1].replace("_", " ")
+
+
+def _format_place(loc: dict[str, str]) -> str:
+    """Render a resolved location as ``City, Country`` (or whatever
+    fields are available).
+    """
+    parts = [loc.get("city", ""), loc.get("country", "")]
+    return ", ".join(p for p in parts if p)
+
+
+def time_space_awareness(lang: str) -> str:
+    """Return a short, localized prompt fragment telling Samantha the
+    current day, local time, and the user's location (CoreLocation when
+    available, IP-resolved when not, timezone-derived as last resort).
+    """
+    code = resolve(lang)
+    tz_name = _detect_local_tz_name()
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = timezone.utc
+        tz_name = "UTC"
+    now = datetime.now(tz)
+
+    loc, source = detect_location()
+    sentences = _PLACE_SENTENCE[code]
+    if loc:
+        place_sentence = sentences[source].format(where=_format_place(loc), tz=tz_name)
+    elif "/" in tz_name:
+        place_sentence = sentences["tz"].format(where=_tz_to_place(tz_name), tz=tz_name)
+    else:
+        place_sentence = sentences["utc"].format(tz=tz_name)
+
+    return _TIME_SPACE_TPL[code].format(
+        weekday=_WEEKDAYS[code][now.weekday()],
+        day=now.day,
+        month=_MONTHS[code][now.month - 1],
+        year=now.year,
+        time=now.strftime("%H:%M"),
+        place_sentence=place_sentence,
+    )
 
 
 # ── Empathy modulation ───────────────────────────────────────────────────

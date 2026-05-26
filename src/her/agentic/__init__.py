@@ -23,6 +23,7 @@ from . import calendar  # noqa: F401,E402
 from . import email  # noqa: F401,E402
 from . import macos  # noqa: F401,E402
 from . import screen  # noqa: F401,E402
+from . import skills  # noqa: F401,E402
 from . import web  # noqa: F401,E402
 
 __all__ = ["TOOLS", "Tool", "by_name", "openai_specs", "tool"]
