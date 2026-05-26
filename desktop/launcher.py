@@ -180,6 +180,46 @@ def _run_server() -> None:
     her_main()
 
 
+def _patch_pywebview_media_permission() -> None:
+    """Auto-grant getUserMedia() to our loopback origin.
+
+    WKWebView prompts per-origin for camera/microphone access independently
+    of macOS TCC, and — unlike Safari — never persists the decision across
+    sessions. pywebview 6.x doesn't implement the WKUIDelegate selector
+    `webView:requestMediaCapturePermissionForOrigin:...:decisionHandler:`,
+    so the default behavior (always prompt) applies, and the user sees an
+    'Allow 127.0.0.1 to use your camera/microphone' dialog on every launch
+    even though the .app already has the system-level grant.
+
+    Subclass pywebview's BrowserDelegate to add the missing selector and
+    auto-grant for our own loopback origin. Non-loopback falls through to
+    the default prompt — we don't want to silently grant arbitrary pages
+    served via redirects.
+    """
+    try:
+        import webview.platforms.cocoa as _cocoa
+    except Exception:
+        return  # not running on cocoa backend; nothing to patch
+
+    base = _cocoa.BrowserView.BrowserDelegate
+
+    class _HerBrowserDelegate(base):  # type: ignore[misc, valid-type]
+        def webView_requestMediaCapturePermissionForOrigin_initiatedByFrame_type_decisionHandler_(
+            self, _webview, origin, _frame, _mediaCaptureType, decisionHandler
+        ):
+            host = ""
+            try:
+                host = str(origin.host())
+            except Exception:
+                pass
+            if host in ("127.0.0.1", "localhost", APP_HOST):
+                decisionHandler(1)  # WKPermissionDecisionGrant
+            else:
+                decisionHandler(0)  # WKPermissionDecisionPrompt
+
+    _cocoa.BrowserView.BrowserDelegate = _HerBrowserDelegate
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -211,6 +251,9 @@ def main() -> None:
         sys.exit(1)
 
     import webview  # heavy; import after server bootstrap
+
+    _patch_pywebview_media_permission()
+
     webview.create_window(
         title="Her",
         url=f"http://{APP_HOST}:{APP_PORT}/",
@@ -218,7 +261,9 @@ def main() -> None:
         height=780,
         min_size=(800, 600),
     )
-    webview.start()
+    # Persistent WKWebsiteDataStore: without this, WKWebView runs in private
+    # mode and forgets per-origin cookies on every launch.
+    webview.start(private_mode=False, storage_path=str(workdir / "webview"))
     # webview.start() blocks until the last window closes.
     LOG.info("Window closed; exiting.")
     os._exit(0)

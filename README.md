@@ -35,7 +35,7 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 
 **No terminal, no Python, no setup.** Just download a `.dmg`, drag, and run.
 
-1. **Download** the latest `Her-<version>.dmg` from the
+1. **Download** the latest `Her-0.3.0.dmg` from the
    [Releases page](https://github.com/msblendorio/her/releases/latest).
 2. **Open** the DMG and drag `Her` onto `Applications`. Eject the disk image.
 3. **First launch:** right-click `Her.app` → **Open** (only this once —
@@ -117,7 +117,7 @@ clean checkout with the `[desktop]` extra installed:
 ```bash
 brew install create-dmg               # one-time
 pip install -e ".[desktop]"           # adds py2app
-./scripts/build-dmg.sh                # produces dist/Her-<version>.dmg
+./scripts/build-dmg.sh                # produces dist/Her-0.3.0.dmg
 ```
 
 Quick iteration:
@@ -125,7 +125,7 @@ Quick iteration:
 - `./scripts/build-dmg.sh --app-only` — rebuild just `dist/Her.app`, skip the DMG
 - `./scripts/build-dmg.sh --dmg-only` — rewrap the existing `.app` into a fresh DMG
 
-`dist/Her-<version>.dmg` is a build artifact and is gitignored — publish it
+`dist/Her-0.3.0.dmg` is a build artifact and is gitignored — publish it
 as a GitHub *release asset* (Releases → Draft a new release → attach the
 `.dmg`) rather than committing it to the repo.
 

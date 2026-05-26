@@ -82,18 +82,37 @@ if [[ "$MODE" != "dmg" ]]; then
     exit 1
   fi
 
-  # ── Ad-hoc codesign ────────────────────────────────────────────────
+  # ── Codesign ───────────────────────────────────────────────────────
   # Without this, Gatekeeper rejects the bundled .dylibs even after the
-  # user clears the quarantine xattr. Ad-hoc signing (-) is free and
-  # works for personal / unsigned distribution.
+  # user clears the quarantine xattr.
   #
-  # NB: do NOT pass --options runtime here. Hardened Runtime requires
-  # every dlopen'd library to share the loading process's Team ID; with
-  # ad-hoc signing the bundled Python.framework keeps its original
-  # python.org Team ID and macOS refuses to load it ("mapping process
-  # and mapped file (non-platform) have different Team IDs").
-  echo "==> Ad-hoc signing $APP_BUNDLE"
-  codesign --force --deep --sign - \
+  # Two modes:
+  #   - "Her Code Signing" identity present in the login keychain (created
+  #     by scripts/create-signing-identity.sh): use it. The designated
+  #     requirement is then anchored on the certificate, so TCC grants
+  #     (Microphone, Camera, AppleEvents…) persist across rebuilds.
+  #   - Otherwise: ad-hoc (-). Each rebuild changes the CDHash, so TCC
+  #     treats every build as a new app and re-prompts the user.
+  #
+  # NB: do NOT pass --options runtime in either mode. Hardened Runtime
+  # requires every dlopen'd library to share the loading process's Team
+  # ID; with ad-hoc *or* self-signed identities the bundled
+  # Python.framework keeps its original python.org Team ID and macOS
+  # refuses to load it ("mapping process and mapped file (non-platform)
+  # have different Team IDs").
+  SIGN_IDENTITY="-"
+  # Don't pass -v: a self-signed identity isn't trust-anchored to an Apple
+  # root, so find-identity -v hides it. codesign finds it by CN anyway.
+  if security find-identity -p codesigning 2>/dev/null \
+      | grep -q '"Her Code Signing"'; then
+    SIGN_IDENTITY="Her Code Signing"
+    echo "==> Signing $APP_BUNDLE with stable identity '$SIGN_IDENTITY'"
+  else
+    echo "==> Ad-hoc signing $APP_BUNDLE"
+    echo "    Tip: ./scripts/create-signing-identity.sh creates a stable"
+    echo "    identity so TCC grants survive future rebuilds."
+  fi
+  codesign --force --deep --sign "$SIGN_IDENTITY" \
     --timestamp=none \
     "$APP_BUNDLE" || {
       echo "WARN: codesign failed; continuing with unsigned bundle." >&2

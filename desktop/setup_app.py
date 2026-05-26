@@ -36,8 +36,8 @@ PLIST = {
     "CFBundleName": "Her",
     "CFBundleDisplayName": "Her",
     "CFBundleIdentifier": "io.sblendorio.her",
-    "CFBundleShortVersionString": "0.2.0",
-    "CFBundleVersion": "0.2.0",
+    "CFBundleShortVersionString": "0.3.0",
+    "CFBundleVersion": "0.3.0",
     "LSMinimumSystemVersion": "12.0",
     "NSHighResolutionCapable": True,
     # Per-capability usage strings. macOS surfaces these in the consent
