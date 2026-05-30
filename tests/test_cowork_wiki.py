@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
+from her.core.usage import UsageTracker
 from her.cowork.skills_store import CoworkSkillStore, slugify
 from her.memory.wiki.engine import WikiEngine
 from her.memory.wiki.store import WikiStore
@@ -116,3 +117,41 @@ def test_wiki_engine_no_credential(monkeypatch):
     assert "credential" in out.lower()
     out = asyncio.run(eng.ingest("some text", "src"))
     assert "credential" in out.lower()
+
+
+# ---------- Anthropic cost accounting -------------------------------------
+
+
+def test_record_anthropic_cost_and_total():
+    u = UsageTracker()
+    u.reset(model="gpt-realtime-mini")
+    # Pretend the OpenAI side spent nothing; only Claude is charged.
+    u.record_anthropic(
+        {"input_tokens": 1000, "output_tokens": 500,
+         "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        "claude-opus-4-8",
+    )
+    snap = u.snapshot()
+    # opus-4-8: 1000*5/1e6 + 500*25/1e6 = 0.0175
+    assert snap["anthropic"]["cost_usd"] == 0.0175
+    assert snap["anthropic"]["requests"] == 1
+    assert snap["cost_usd"] == 0.0  # OpenAI bucket untouched
+    assert snap["cost_total_usd"] == 0.0175  # combined
+
+
+def test_record_anthropic_object_with_cache():
+    u = UsageTracker()
+    u.reset(model="gpt-realtime-mini")
+
+    class _Usage:
+        input_tokens = 0
+        output_tokens = 0
+        cache_read_input_tokens = 10000  # billed at 0.1x input
+        cache_creation_input_tokens = 0
+
+    u.record_anthropic(_Usage(), "claude-sonnet-4-6")
+    # sonnet input $3/1M -> cache read 0.3/1M -> 10000 * 0.3/1e6 = 0.000003 -> 0.0 at 5dp? no: 0.000003
+    assert u.snapshot()["anthropic"]["cost_usd"] == round(10000 * (3.0 * 0.1) / 1_000_000, 5)
+    # None is a no-op (never raises).
+    u.record_anthropic(None)
+    assert u.snapshot()["anthropic"]["requests"] == 1

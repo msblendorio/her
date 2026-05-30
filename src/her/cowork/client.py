@@ -20,6 +20,9 @@ import os
 from typing import Any
 
 from ..config import settings
+from ..core.event_bus import bus
+from ..core.state import state
+from ..core.usage import usage
 
 log = logging.getLogger(__name__)
 
@@ -142,6 +145,7 @@ class CoworkClient:
                     "format": {"type": "json_schema", "schema": json_schema}
                 },
             )
+            self._account(resp, model)
             return _first_text(resp)
 
         # Open-ended generation: adaptive thinking + streaming.
@@ -156,7 +160,17 @@ class CoworkClient:
             kwargs["thinking"] = {"type": "adaptive"}
         async with client.messages.stream(**kwargs) as stream:
             final = await stream.get_final_message()
+        self._account(final, model)
         return _first_text(final)
+
+    def _account(self, message: Any, model: str) -> None:
+        """Record the call's Anthropic token usage and push a status refresh so
+        the cost in the UI status bar updates live."""
+        try:
+            usage.record_anthropic(getattr(message, "usage", None), model)
+            bus.publish("realtime.status", state.snapshot())
+        except Exception:
+            log.debug("cowork: usage accounting failed", exc_info=True)
 
     async def run_task(self, task: str, context: str = "") -> str:
         """Delegate an open-ended knowledge-work task to Claude (Cowork)."""

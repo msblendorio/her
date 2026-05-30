@@ -7,7 +7,10 @@
 *She talks with a natural voice, hears you, watches through the webcam,
 glances at your screen on request, searches the web, opens apps and URLs,
 and remembers what you discussed across sessions. She listens with empathy,
-picks up on your mood, and responds with warmth — more companion than tool.*
+picks up on your mood, and responds with warmth — more companion than tool.
+For deep work she taps a second brain — **Claude**, the engine behind Claude
+Cowork — to tackle open-ended tasks, author reusable skills, and grow a
+personal, interlinked **knowledge wiki** she maintains across sessions.*
 
 ---
 
@@ -16,14 +19,14 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 
 |                       |                                                                                                                                                                                                                                                         |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Voice & reasoning** | OpenAI Realtime API (`gpt-realtime-mini` by default, voice `shimmer`)                                                                                                                                                                                   |
+| **Voice & reasoning** | OpenAI Realtime API (`gpt-realtime-mini` by default, voice `shimmer`) — low-latency listening, speaking, and live reasoning                                                                                                                              |
+| **Cowork (Claude)**   | A second brain for deep work: delegate open-ended knowledge-work to **Claude** (`claude-opus-4-8`, the engine behind **Claude Cowork**) with `run_cowork_task`, and have her **author Agent Skills** (`SKILL.md`) into `~/.claude/skills/` that Cowork and Claude Code pick up. Enable with an Anthropic API key **or** your Claude Pro/Max subscription |
+| **Knowledge wiki**    | A persistent, interlinked markdown knowledge base Claude maintains (Karpathy's LLM-wiki pattern): *"save this to my wiki"* to ingest, *"what did I save about…"* to query, plus a `lint` consistency pass — all under `data/wiki/`                          |
 | **Vision**            | Local Moondream2 captions the webcam every few seconds and injects the scene into the live session — the webcam feed itself is never shown in the UI (*"sees without showing"*)                                                                         |
 | **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                                      |
-| **Knowledge wiki**    | A persistent, interlinked markdown knowledge base Claude maintains (Karpathy's LLM-wiki pattern): say *"save this to my wiki"* to ingest a source, ask *"what did I save about…"* to query it, all under `data/wiki/` (`ingest` / `query` / `lint`)        |
-| **Cowork**            | Connects to Claude Cowork: delegate open-ended knowledge-work with `run_cowork_task`, and author new Agent Skills (`SKILL.md`) into `~/.claude/skills/` that Cowork and Claude Code pick up. Needs an Anthropic API key *or* a Claude Pro/Max token        |
 | **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                                               |
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
-| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, real-time status indicators (`listening / seeing / thinking / speaking`), running cost in the footer, and a language selector (it / en / es / fr / de — default Italian) |
+| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
 
 
 > The assistant is **session-based**: nothing runs until you open the page
@@ -33,11 +36,50 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 
 ---
 
+## Two brains: voice and deep work
+
+Samantha runs on **two models at once** — OpenAI for voice, Claude for deep work:
+
+- **OpenAI Realtime** (`gpt-realtime-mini`) is her voice and senses —
+  low-latency listening, speaking, and live reasoning.
+- **Claude** (`claude-opus-4-8`, the engine behind **Claude Cowork**) is her
+  deep-work brain. When a request needs real reasoning — drafting, analysis,
+  planning, research synthesis — she delegates to Claude with `run_cowork_task`
+  and reads the result back.
+
+On top of Claude she can:
+
+- **Author Agent Skills.** Ask her to *"create a Cowork skill that…"* and she
+  writes a `SKILL.md` into `~/.claude/skills/`, instantly usable by **Claude
+  Cowork** and **Claude Code**.
+- **Maintain a knowledge wiki.** A persistent, interlinked markdown knowledge
+  base (Andrej Karpathy's
+  [LLM-wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)):
+  *"save this to my wiki"* ingests a source into the right pages,
+  *"what did I save about…"* queries it, and a `lint` pass keeps it consistent.
+  It lives in `data/wiki/` (`index.md` + `log.md` + `pages/`).
+
+**Enabling it.** Provide **one** Anthropic credential — either a pay-per-use
+**API key** (`ANTHROPIC_API_KEY`, from
+[platform.claude.com](https://platform.claude.com)) **or** your **Claude
+Pro/Max subscription** token (`ANTHROPIC_AUTH_TOKEN`, an `sk-ant-oat…` from
+`ant auth login`). In the desktop app these live in
+`~/Library/Application Support/Her/.env`; from source, in `.env`. Without a
+credential everything else still works — only Cowork and the wiki stay dormant.
+The footer shows the **OpenAI and Claude costs side by side**.
+
+> The two billings are separate: an **API key** is metered pay-per-use on the
+> Anthropic Console, while the **Pro/Max token** draws on your existing chat
+> subscription (short-lived — re-run `ant auth print-credentials` when it
+> expires). The API key is the most reliable path.
+
+---
+
 ## Install on Mac (the easy way)
 
 **No terminal, no Python, no setup.** Just download a `.dmg`, drag, and run.
 
-1. **Download** the latest `Her-0.4.0.dmg` from the
+1. **Download** the latest `Her-0.4.1.dmg` from the
    [Releases page](https://github.com/msblendorio/her/releases/latest).
 2. **Open** the DMG and drag `Her` onto `Applications`. Eject the disk image.
 3. **First launch:** right-click `Her.app` → **Open** (only this once —
@@ -45,6 +87,11 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 4. A small window appears asking for your **OpenAI API key** — paste it once
    (get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys))
    and you're done.
+
+> *Optional but recommended:* to unlock **Cowork** and the **knowledge wiki**,
+> also add an Anthropic credential (an API key **or** your Claude Pro/Max token)
+> to `~/Library/Application Support/Her/.env` — see
+> [Two brains](#two-brains-voice-and-deep-work).
 
 After that, Samantha runs as a normal Mac app: native window, Dock icon,
 mic/webcam/calendar prompts come from `Her.app` itself the first time each
@@ -66,6 +113,8 @@ of these prerequisites — Python and all dependencies ship inside the app.
 - macOS (the agentic tools use `osascript`, `screencapture`, and `open`)
 - Python **3.13+**
 - An OpenAI API key with Realtime API access
+- *(optional)* An Anthropic credential for **Cowork + the knowledge wiki** — a
+  pay-per-use API key or a Claude Pro/Max subscription token
 - ~4 GB of free disk for the Moondream2 weights (downloaded on first use)
 - Chrome or Safari, served from `127.0.0.1` (no HTTPS needed on localhost).
 To open from another device on the same Wi-Fi, see
@@ -119,7 +168,7 @@ clean checkout with the `[desktop]` extra installed:
 ```bash
 brew install create-dmg               # one-time
 pip install -e ".[desktop]"           # adds py2app
-./scripts/build-dmg.sh                # produces dist/Her-0.4.0.dmg
+./scripts/build-dmg.sh                # produces dist/Her-0.4.1.dmg
 ```
 
 Quick iteration:
@@ -127,7 +176,7 @@ Quick iteration:
 - `./scripts/build-dmg.sh --app-only` — rebuild just `dist/Her.app`, skip the DMG
 - `./scripts/build-dmg.sh --dmg-only` — rewrap the existing `.app` into a fresh DMG
 
-`dist/Her-0.4.0.dmg` is a build artifact and is gitignored — publish it
+`dist/Her-0.4.1.dmg` is a build artifact and is gitignored — publish it
 as a GitHub *release asset* (Releases → Draft a new release → attach the
 `.dmg`) rather than committing it to the repo.
 
@@ -176,6 +225,12 @@ domain) or **mkcert + uvicorn TLS** for a fully local HTTPS setup
 | *"Hai mail nuove?"* / *"Any new email?"*        | `email_list_unread()` via macOS Mail.app                      |
 | *"Cerca la mail della banca"*                   | `email_search("banca")` (subject + sender + body)             |
 | *"Send Anna a quick note saying I'll be late"*  | `email_send(to, subject, body)` — confirms first, then sends  |
+| *"Chiedi a Cowork di scrivermi una mail di follow-up"* | `run_cowork_task(...)` — delegates deep work to Claude         |
+| *"Crea una skill per Cowork che riassume un PDF"* | `create_cowork_skill(...)` → `~/.claude/skills/<slug>/SKILL.md` |
+| *"Quali skill ha Cowork?"*                      | `list_cowork_skills()`                                         |
+| *"Salva questo nella mia knowledge base"*       | `wiki_ingest(text, title)` — files it into the wiki            |
+| *"Cosa ho salvato su X?"*                       | `wiki_query("X")` — answers from the wiki                      |
+| *"Controlla la coerenza della mia wiki"*        | `wiki_lint()` — flags contradictions / gaps                   |
 
 
 She'll commonly chain tools, e.g. *"find a pizzeria near the Pantheon and
@@ -275,6 +330,14 @@ Sensible defaults are in `.env.example`. The interesting knobs:
 | `VISUAL_MEMORY_ENABLED`   | `true`              | Also summarize what Samantha saw through the webcam and replay it in the next session's recall. Requires `VISION_ENABLED=true` |
 | `AGENTIC_ENABLED`         | `true`              | Expose the macOS / web / screen tools to the model                                                                             |
 | `WORLD_MODEL_ENABLED`     | `false`             | Keep off until real V-JEPA 2 weights are wired                                                                                 |
+| `ANTHROPIC_API_KEY`       | *empty*             | Anthropic API key — enables Cowork + the knowledge wiki (pay-per-use)                                                          |
+| `ANTHROPIC_AUTH_TOKEN`    | *empty*             | Alternative to the key: a Claude Pro/Max subscription token (`sk-ant-oat…`)                                                    |
+| `ANTHROPIC_MODEL`         | `claude-opus-4-8`   | Claude model used by Cowork / the wiki (e.g. `claude-sonnet-4-6` to save cost)                                                 |
+| `COWORK_ENABLED`          | `true`              | Master switch for the Cowork tools (`run_cowork_task`, `create_cowork_skill`, …)                                               |
+| `COWORK_SKILLS_PATH`      | `~/.claude/skills`  | Where authored Agent Skills are written — the dir Cowork and Claude Code read                                                  |
+| `WIKI_ENABLED`            | `true`              | Master switch for the knowledge wiki (`wiki_ingest` / `wiki_query` / `wiki_lint`)                                              |
+| `WIKI_PATH`               | `data/wiki`         | Where the wiki lives (`index.md` + `log.md` + `pages/`)                                                                        |
+| `WIKI_MAX_CONTEXT_PAGES`  | `12`                | Max existing wiki pages loaded into Claude's context per ingest/query                                                          |
 
 
 ---
@@ -293,6 +356,13 @@ OpenAI Realtime pricing as of early 2026, approximate:
 Memory summaries add a few thousandths of a dollar per session. Vision is
 fully local (free). The running cost is shown live in the footer and reset
 on every new session.
+
+**Cowork / wiki (Claude).** When Samantha delegates to Claude, those tokens are
+billed separately by Anthropic (`claude-opus-4-8`: ~$5 / 1M input, ~$25 / 1M
+output; switch `ANTHROPIC_MODEL` to `claude-sonnet-4-6` to roughly halve it). It
+only runs when you ask for deep work or wiki operations, so most sessions add
+nothing. The footer breaks the total down as `(OpenAI $… · Claude $…)` whenever
+Claude has been used, so you always see both meters.
 
 ---
 

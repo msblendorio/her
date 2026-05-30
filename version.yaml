@@ -6,4 +6,4 @@
 #   - desktop/setup_app.py  CFBundle version strings (at build time)
 #   - scripts/build-dmg.sh  DMG filename (at build time)
 #   - README.md             run `python scripts/sync_version.py` to refresh
-version: 0.4.0
+version: 0.4.1

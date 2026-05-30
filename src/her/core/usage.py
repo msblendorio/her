@@ -31,6 +31,19 @@ PRICES: dict[str, dict[str, float]] = {
 DEFAULT_PRICES = PRICES["gpt-realtime-mini"]
 
 
+# Anthropic (Claude) pricing for the Cowork / knowledge-wiki calls, USD per
+# 1,000,000 tokens. Cache reads bill at ~0.1x input; 5-minute ephemeral cache
+# writes at ~1.25x input (the TTL CoworkClient uses). Approximate, may drift.
+ANTHROPIC_PRICES: dict[str, dict[str, float]] = {
+    "claude-opus-4-8": {"in": 5.00, "out": 25.00},
+    "claude-opus-4-7": {"in": 5.00, "out": 25.00},
+    "claude-opus-4-6": {"in": 5.00, "out": 25.00},
+    "claude-sonnet-4-6": {"in": 3.00, "out": 15.00},
+    "claude-haiku-4-5": {"in": 1.00, "out": 5.00},
+}
+ANTHROPIC_DEFAULT_PRICES = ANTHROPIC_PRICES["claude-opus-4-8"]
+
+
 def _prices_for(model: str) -> dict[str, float]:
     # Match the longest prefix (e.g. "gpt-realtime-mini-2025-10-06" -> mini).
     if "mini" in model:
@@ -38,6 +51,17 @@ def _prices_for(model: str) -> dict[str, float]:
     if model.startswith("gpt-realtime"):
         return PRICES["gpt-realtime"]
     return DEFAULT_PRICES
+
+
+def _anthropic_prices_for(model: str) -> dict[str, float]:
+    for key, prices in ANTHROPIC_PRICES.items():
+        if model.startswith(key):
+            return prices
+    if "haiku" in model:
+        return ANTHROPIC_PRICES["claude-haiku-4-5"]
+    if "sonnet" in model:
+        return ANTHROPIC_PRICES["claude-sonnet-4-6"]
+    return ANTHROPIC_DEFAULT_PRICES
 
 
 @dataclass
@@ -52,12 +76,26 @@ class UsageTracker:
     responses: int = 0
     cost_usd: float = 0.0
 
+    # Anthropic (Cowork / knowledge wiki) accounting, tracked separately from
+    # the OpenAI realtime buckets so the token breakdown above stays clean.
+    anthropic_model: str = ""
+    anthropic_in: int = 0
+    anthropic_out: int = 0
+    anthropic_cache_read: int = 0
+    anthropic_cache_write: int = 0
+    anthropic_requests: int = 0
+    anthropic_cost_usd: float = 0.0
+
     def reset(self, model: str = "") -> None:
         self.model = model or self.model
         self.text_in = self.text_in_cached = self.text_out = 0
         self.audio_in = self.audio_in_cached = self.audio_out = 0
         self.responses = 0
         self.cost_usd = 0.0
+        self.anthropic_in = self.anthropic_out = 0
+        self.anthropic_cache_read = self.anthropic_cache_write = 0
+        self.anthropic_requests = 0
+        self.anthropic_cost_usd = 0.0
 
     def record(self, usage: dict | None) -> None:
         """Apply one `response.done.response.usage` block."""
@@ -105,6 +143,45 @@ class UsageTracker:
         ) / 1_000_000.0
         self.cost_usd += added
 
+    def record_anthropic(self, usage: object | None, model: str = "") -> None:
+        """Apply one Anthropic Messages ``usage`` block (object or dict).
+
+        Reads ``input_tokens`` / ``output_tokens`` / ``cache_read_input_tokens``
+        / ``cache_creation_input_tokens`` defensively (the SDK returns a pydantic
+        object; a plain dict also works) and adds the cost to the Anthropic
+        bucket, which the snapshot folds into the running total.
+        """
+        if usage is None:
+            return
+
+        def _g(name: str) -> int:
+            if isinstance(usage, dict):
+                return int(usage.get(name) or 0)
+            return int(getattr(usage, name, 0) or 0)
+
+        if model:
+            self.anthropic_model = model
+
+        inp = _g("input_tokens")
+        out = _g("output_tokens")
+        cache_read = _g("cache_read_input_tokens")
+        cache_write = _g("cache_creation_input_tokens")
+
+        p = _anthropic_prices_for(self.anthropic_model or model)
+        added = (
+            inp         * p["in"]
+          + out         * p["out"]
+          + cache_read  * (p["in"] * 0.1)
+          + cache_write * (p["in"] * 1.25)
+        ) / 1_000_000.0
+
+        self.anthropic_in += inp
+        self.anthropic_out += out
+        self.anthropic_cache_read += cache_read
+        self.anthropic_cache_write += cache_write
+        self.anthropic_requests += 1
+        self.anthropic_cost_usd += added
+
     def snapshot(self) -> dict:
         return {
             "model": self.model,
@@ -123,6 +200,18 @@ class UsageTracker:
                 ),
             },
             "cost_usd": round(self.cost_usd, 5),
+            # Anthropic (Cowork / wiki) cost, plus the combined total the
+            # status bar displays. cost_usd above stays OpenAI-only.
+            "anthropic": {
+                "model": self.anthropic_model,
+                "requests": self.anthropic_requests,
+                "input_tokens": self.anthropic_in,
+                "output_tokens": self.anthropic_out,
+                "cache_read": self.anthropic_cache_read,
+                "cache_write": self.anthropic_cache_write,
+                "cost_usd": round(self.anthropic_cost_usd, 5),
+            },
+            "cost_total_usd": round(self.cost_usd + self.anthropic_cost_usd, 5),
         }
 
 

@@ -195,7 +195,11 @@ function renderA11yBadge(snap) {
 function renderStatusBar(snap) {
   const u = snap.usage || {};
   const tok = u.tokens || {};
-  const cost = (u.cost_usd || 0).toFixed(4);
+  const anth = u.anthropic || {};
+  // Combined OpenAI + Anthropic cost (fall back to the OpenAI-only field for
+  // older snapshots that predate the breakdown).
+  const total = (u.cost_total_usd != null ? u.cost_total_usd : (u.cost_usd || 0));
+  const cost = total.toFixed(4);
   const upt = fmtSecs(snap.uptime_s || 0);
   const audioIn = fmtTokens(tok.audio_in || 0);
   const audioOut = fmtTokens(tok.audio_out || 0);
@@ -203,9 +207,17 @@ function renderStatusBar(snap) {
   const cached = cachedSum > 0 ? ` · ${t("cached")} ${fmtTokens(cachedSum)}` : "";
   const session = snap.active ? t("session_active") : t("disconnected");
   const audioLbl = t("audio");
+  // When Cowork/wiki (Claude) has spent anything, show the split so the user
+  // sees both API costs.
+  let costHtml = `<span style="color:var(--ok)">$${cost}</span>`;
+  if ((anth.cost_usd || 0) > 0) {
+    const oa = (u.cost_usd || 0).toFixed(4);
+    const cl = (anth.cost_usd || 0).toFixed(4);
+    costHtml += ` <span style="opacity:.65">(OpenAI $${oa} · Claude $${cl})</span>`;
+  }
   statusLine.innerHTML =
     `${session} · ⏱ ${upt} · ` +
-    `<span style="color:var(--ok)">$${cost}</span> · ` +
+    `${costHtml} · ` +
     `↑ ${audioIn} ${audioLbl} · ↓ ${audioOut} ${audioLbl} · ` +
     `${u.responses || 0} ${t("turns")}${cached}`;
   renderA11yBadge(snap);
