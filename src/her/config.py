@@ -65,5 +65,32 @@ class Settings(BaseSettings):
     skills_path: str = "data/skills"
     skills_compiler_model: str = "gpt-4o-mini"
 
+    # ── Cowork / Anthropic ────────────────────────────────────────────────
+    # Samantha can delegate open-ended knowledge-work tasks to Claude (the
+    # engine behind Claude Cowork) and author new Agent Skills that Cowork and
+    # Claude Code pick up from ``cowork_skills_path``. Two credential paths are
+    # supported, in this order: a pay-per-use Anthropic API key, or a Claude
+    # Pro/Max subscription OAuth token (``ant auth login`` / Claude Code,
+    # ``sk-ant-oat...``). The ``anthropic`` SDK also falls back to the same env
+    # vars if these are blank. Cowork features stay dormant until one is set.
+    anthropic_api_key: str = ""
+    anthropic_auth_token: str = ""
+    anthropic_model: str = "claude-opus-4-8"
+    cowork_enabled: bool = True
+    # Where authored Agent Skills are written. ``~`` is expanded. The global
+    # ``~/.claude/skills`` dir is read by both Claude Cowork and Claude Code.
+    cowork_skills_path: str = "~/.claude/skills"
+
+    # ── Knowledge-base LLM wiki (Karpathy pattern) ────────────────────────
+    # A persistent, interlinked markdown wiki maintained by Claude: ingest a
+    # source -> update pages; query -> answer + file findings; lint -> health
+    # check. Lives under ``wiki_path`` as index.md + log.md + pages/. Powered
+    # by the same Anthropic client as Cowork.
+    wiki_enabled: bool = True
+    wiki_path: str = "data/wiki"
+    # Cap on how many existing wiki pages are loaded into the model's context
+    # for an ingest/query, to bound token cost.
+    wiki_max_context_pages: int = 12
+
 
 settings = Settings()

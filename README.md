@@ -19,6 +19,8 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 | **Voice & reasoning** | OpenAI Realtime API (`gpt-realtime-mini` by default, voice `shimmer`)                                                                                                                                                                                   |
 | **Vision**            | Local Moondream2 captions the webcam every few seconds and injects the scene into the live session — the webcam feed itself is never shown in the UI (*"sees without showing"*)                                                                         |
 | **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                                      |
+| **Knowledge wiki**    | A persistent, interlinked markdown knowledge base Claude maintains (Karpathy's LLM-wiki pattern): say *"save this to my wiki"* to ingest a source, ask *"what did I save about…"* to query it, all under `data/wiki/` (`ingest` / `query` / `lint`)        |
+| **Cowork**            | Connects to Claude Cowork: delegate open-ended knowledge-work with `run_cowork_task`, and author new Agent Skills (`SKILL.md`) into `~/.claude/skills/` that Cowork and Claude Code pick up. Needs an Anthropic API key *or* a Claude Pro/Max token        |
 | **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                                               |
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
 | **UI**                | Single browser page with a text input bar for typing and speaking in parallel, real-time status indicators (`listening / seeing / thinking / speaking`), running cost in the footer, and a language selector (it / en / es / fr / de — default Italian) |
@@ -35,7 +37,7 @@ picks up on your mood, and responds with warmth — more companion than tool.*
 
 **No terminal, no Python, no setup.** Just download a `.dmg`, drag, and run.
 
-1. **Download** the latest `Her-0.3.0.dmg` from the
+1. **Download** the latest `Her-0.4.0.dmg` from the
    [Releases page](https://github.com/msblendorio/her/releases/latest).
 2. **Open** the DMG and drag `Her` onto `Applications`. Eject the disk image.
 3. **First launch:** right-click `Her.app` → **Open** (only this once —
@@ -117,7 +119,7 @@ clean checkout with the `[desktop]` extra installed:
 ```bash
 brew install create-dmg               # one-time
 pip install -e ".[desktop]"           # adds py2app
-./scripts/build-dmg.sh                # produces dist/Her-0.3.0.dmg
+./scripts/build-dmg.sh                # produces dist/Her-0.4.0.dmg
 ```
 
 Quick iteration:
@@ -125,7 +127,7 @@ Quick iteration:
 - `./scripts/build-dmg.sh --app-only` — rebuild just `dist/Her.app`, skip the DMG
 - `./scripts/build-dmg.sh --dmg-only` — rewrap the existing `.app` into a fresh DMG
 
-`dist/Her-0.3.0.dmg` is a build artifact and is gitignored — publish it
+`dist/Her-0.4.0.dmg` is a build artifact and is gitignored — publish it
 as a GitHub *release asset* (Releases → Draft a new release → attach the
 `.dmg`) rather than committing it to the repo.
 

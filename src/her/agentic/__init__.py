@@ -26,4 +26,10 @@ from . import screen  # noqa: F401,E402
 from . import skills  # noqa: F401,E402
 from . import web  # noqa: F401,E402
 
+# Cross-package tool domains (registered here so they're imported whenever the
+# agentic registry is loaded): Cowork (delegate to Claude / author Agent Skills)
+# and the knowledge-base wiki.
+from ..cowork import tools as _cowork_tools  # noqa: F401,E402
+from ..memory.wiki import tools as _wiki_tools  # noqa: F401,E402
+
 __all__ = ["TOOLS", "Tool", "by_name", "openai_specs", "tool"]

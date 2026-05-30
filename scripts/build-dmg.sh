@@ -20,7 +20,8 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="Her"
 APP_BUNDLE="dist/${APP_NAME}.app"
-VERSION="$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+# version.yaml is the single source of truth for the project version.
+VERSION="$(grep -m1 '^version:' version.yaml | sed -E "s/^version:[[:space:]]*//; s/[\"']//g; s/[[:space:]].*$//")"
 DMG_PATH="dist/${APP_NAME}-${VERSION}.dmg"
 
 MODE="all"
@@ -134,6 +135,8 @@ fi
 
 echo "==> Building $DMG_PATH"
 rm -f "$DMG_PATH"
+# Drop any stale read-write staging image left by a previous interrupted run.
+find dist -maxdepth 1 -name 'rw.*.dmg' -delete 2>/dev/null || true
 
 CREATE_DMG_ARGS=(
   --volname "${APP_NAME} installer"
@@ -149,7 +152,38 @@ if [[ -f desktop/icon/her.icns ]]; then
   CREATE_DMG_ARGS+=(--volicon "desktop/icon/her.icns")
 fi
 
-create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$APP_BUNDLE"
+# create-dmg occasionally can't unmount its staging volume — Spotlight or
+# Finder grabs the freshly-mounted disk and macOS reports "resource busy".
+# When that happens create-dmg leaves a read-write "rw.*.dmg" staging image
+# in dist/ and never produces the final compressed DMG. Tolerate it and
+# finalize by hand below, so releases don't need manual intervention.
+create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$APP_BUNDLE" || true
+
+if [[ ! -f "$DMG_PATH" ]]; then
+  echo "==> create-dmg did not finalize the DMG; recovering from staging image"
+
+  # Force-detach the staging volume if still mounted. The busy state usually
+  # clears within a few seconds, so retry a handful of times.
+  for _ in 1 2 3 4 5; do
+    [[ -d "/Volumes/${APP_NAME} installer" ]] || break
+    hdiutil detach "/Volumes/${APP_NAME} installer" -force >/dev/null 2>&1 || true
+    sleep 2
+  done
+
+  RW_IMG="$(find dist -maxdepth 1 -name 'rw.*.dmg' -print 2>/dev/null | sort | tail -1)"
+  if [[ -z "$RW_IMG" ]]; then
+    echo "ERROR: no final DMG and no staging image to recover from." >&2
+    exit 1
+  fi
+  echo "==> Converting staging image $RW_IMG -> $DMG_PATH"
+  hdiutil convert "$RW_IMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH"
+  rm -f "$RW_IMG"
+fi
+
+if [[ ! -f "$DMG_PATH" ]]; then
+  echo "ERROR: failed to produce $DMG_PATH" >&2
+  exit 1
+fi
 
 echo
 echo "===== Build complete ====="

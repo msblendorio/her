@@ -31,8 +31,10 @@ from ..config import settings
 from ..core.event_bus import bus
 from ..core.state import state
 from ..core.usage import usage
+from ..cowork.client import client as cowork_client
 from ..i18n import (
     accessibility_addendum,
+    cowork_addendum,
     empathy_addendum,
     learned_skills_addendum,
     resolve as resolve_lang,
@@ -193,6 +195,10 @@ class RealtimeSession:
         skills_block = learned_skills_addendum(self._learned_skills, self.language)
         if skills_block:
             parts.append(skills_block)
+        # Cowork (if enabled and an Anthropic credential is present): nudge
+        # Samantha to delegate heavy knowledge-work and author skills.
+        if settings.cowork_enabled and cowork_client.is_configured():
+            parts.append(cowork_addendum(self.language))
         return "\n\n".join(parts)
 
     async def set_learned_skills(self, skills: list[dict]) -> None:

@@ -66,7 +66,14 @@ def _ensure_env(workdir: Path) -> Path:
         "# Get an OpenAI key at https://platform.openai.com/api-keys\n"
         "OPENAI_API_KEY=\n"
         "HOST=127.0.0.1\n"
-        "PORT=8765\n",
+        "PORT=8765\n"
+        "\n"
+        "# Optional: connect Samantha to Cowork (Claude) and the knowledge wiki.\n"
+        "# Provide ONE — an Anthropic API key (platform.claude.com) or a Claude\n"
+        "# Pro/Max subscription token (sk-ant-oat..., from `ant auth login`).\n"
+        "# Leave blank to keep Cowork off.\n"
+        "ANTHROPIC_API_KEY=\n"
+        "ANTHROPIC_AUTH_TOKEN=\n",
         encoding="utf-8",
     )
     return env_path

@@ -17,6 +17,9 @@ numpy>=1.26
 pillow>=10.4
 httpx>=0.27
 
+# Cowork + knowledge wiki: delegate to Claude and author Agent Skills.
+anthropic>=0.49
+
 # Vision (local Moondream2)
 torch>=2.4
 # transformers 5.x renamed internal `_tied_weights_keys` -> `all_tied_weights_keys`,

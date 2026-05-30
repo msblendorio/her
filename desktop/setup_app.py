@@ -9,6 +9,7 @@ runs ad-hoc codesign and create-dmg.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +25,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
+
+def _read_version() -> str:
+    """Read the version from version.yaml — the single source of truth."""
+    text = (ROOT / "version.yaml").read_text(encoding="utf-8")
+    match = re.search(r"^version:\s*['\"]?([^'\"\s]+)", text, re.MULTILINE)
+    return match.group(1) if match else "0.0.0"
+
+
+VERSION = _read_version()
+
 APP = [str(ROOT / "desktop" / "launcher.py")]
 ICON = str(ROOT / "desktop" / "icon" / "her.icns")
 
@@ -36,8 +47,8 @@ PLIST = {
     "CFBundleName": "Her",
     "CFBundleDisplayName": "Her",
     "CFBundleIdentifier": "io.sblendorio.her",
-    "CFBundleShortVersionString": "0.3.0",
-    "CFBundleVersion": "0.3.0",
+    "CFBundleShortVersionString": VERSION,
+    "CFBundleVersion": VERSION,
     "LSMinimumSystemVersion": "12.0",
     "NSHighResolutionCapable": True,
     # Per-capability usage strings. macOS surfaces these in the consent
@@ -80,6 +91,12 @@ OPTIONS = {
         "h11",
         "certifi",
         "dotenv",
+        # Cowork + knowledge wiki. `anthropic` is imported lazily in
+        # her.cowork.client, so py2app's static modulegraph never sees it —
+        # list it (and its non-stdlib deps) explicitly so it ships.
+        "anthropic",
+        "distro",
+        "jiter",
         # anyio loads its backend modules with importlib.import_module at
         # request time (e.g. "anyio._backends._asyncio"), invisible to
         # py2app's static modulegraph — pull in the whole package.

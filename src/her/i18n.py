@@ -325,6 +325,87 @@ _LEARNED_SKILLS_HEADER: dict[str, str] = {
 }
 
 
+# ── Cowork addendum ──────────────────────────────────────────────────────
+# Appended to the system prompt when Cowork is enabled and an Anthropic
+# credential is present. Tells Samantha she can delegate heavy knowledge-work
+# to Claude (Cowork) and author/list Agent Skills. The tools themselves are
+# always exposed via the registry; this just nudges appropriate use.
+
+_COWORK_ADDENDUM: dict[str, str] = {
+    "it": (
+        "Sei collegata a Cowork (il motore Claude di Anthropic). Per compiti di "
+        "lavoro intellettuale articolati — stesura, analisi, pianificazione, "
+        "sintesi di ricerca — puoi delegare con run_cowork_task e poi "
+        "riassumere il risultato a voce. Puoi anche creare nuove skill per "
+        "Cowork con create_cowork_skill ed elencarle con list_cowork_skills. "
+        "Per richieste semplici rispondi direttamente, senza delegare."
+    ),
+    "en": (
+        "You are connected to Cowork (Anthropic's Claude engine). For involved "
+        "knowledge-work — drafting, analysis, planning, research synthesis — you "
+        "can delegate with run_cowork_task and then summarize the result aloud. "
+        "You can also create new Cowork skills with create_cowork_skill and list "
+        "them with list_cowork_skills. For simple requests, answer directly "
+        "instead of delegating."
+    ),
+    "es": (
+        "Estás conectada a Cowork (el motor Claude de Anthropic). Para trabajo "
+        "intelectual elaborado — redacción, análisis, planificación, síntesis de "
+        "investigación — puedes delegar con run_cowork_task y luego resumir el "
+        "resultado en voz alta. También puedes crear nuevas skills de Cowork con "
+        "create_cowork_skill y listarlas con list_cowork_skills. Para peticiones "
+        "simples, responde directamente sin delegar."
+    ),
+    "fr": (
+        "Tu es connectée à Cowork (le moteur Claude d'Anthropic). Pour un "
+        "travail intellectuel élaboré — rédaction, analyse, planification, "
+        "synthèse de recherche — tu peux déléguer avec run_cowork_task puis "
+        "résumer le résultat à voix haute. Tu peux aussi créer de nouvelles "
+        "skills Cowork avec create_cowork_skill et les lister avec "
+        "list_cowork_skills. Pour les demandes simples, réponds directement."
+    ),
+    "de": (
+        "Du bist mit Cowork (Anthropics Claude-Engine) verbunden. Für "
+        "umfangreiche Wissensarbeit — Texten, Analyse, Planung, "
+        "Recherche-Synthese — kannst du mit run_cowork_task delegieren und das "
+        "Ergebnis dann mündlich zusammenfassen. Du kannst auch neue "
+        "Cowork-Skills mit create_cowork_skill erstellen und sie mit "
+        "list_cowork_skills auflisten. Bei einfachen Anfragen antworte direkt."
+    ),
+}
+
+
+def cowork_addendum(lang: str) -> str:
+    return _COWORK_ADDENDUM[resolve(lang)]
+
+
+# ── Knowledge-wiki recall overview ───────────────────────────────────────
+# A tiny block injected into the recall context at session start so Samantha
+# knows the user's knowledge base exists and which topics it covers, and can
+# reach for wiki_query. Page titles only — kept short on purpose.
+
+_WIKI_OVERVIEW_HEADER: dict[str, str] = {
+    "it": "La tua knowledge base (wiki) contiene voci su (usa wiki_query per consultarla):",
+    "en": "Your knowledge base (wiki) holds entries on (use wiki_query to consult it):",
+    "es": "Tu base de conocimiento (wiki) tiene entradas sobre (usa wiki_query para consultarla):",
+    "fr": "Ta base de connaissances (wiki) contient des entrées sur (utilise wiki_query pour la consulter) :",
+    "de": "Deine Wissensbasis (Wiki) enthält Einträge zu (nutze wiki_query zum Nachschlagen):",
+}
+
+# Cap titles in the overview so the recall block stays cheap.
+_MAX_WIKI_TITLES = 12
+
+
+def wiki_overview_block(pages: list[dict], lang: str) -> str:
+    """One-line header + comma-joined page titles, or empty when no pages."""
+    titles = [p.get("title") or p.get("slug", "") for p in pages]
+    titles = [t for t in titles if t][:_MAX_WIKI_TITLES]
+    if not titles:
+        return ""
+    header = _WIKI_OVERVIEW_HEADER[resolve(lang)]
+    return f"{header} {', '.join(titles)}."
+
+
 def learned_skills_addendum(skills: list[dict], lang: str) -> str:
     """Format the list of learned skills as a system-prompt fragment.
 

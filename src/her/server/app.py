@@ -76,6 +76,37 @@ def create_app() -> FastAPI:
             ],
         }
 
+    @app.get("/api/cowork")
+    async def get_cowork() -> dict:
+        from ..cowork.client import client as cowork_client
+        from ..cowork.skills_store import skill_store
+        skills: list[dict] = []
+        try:
+            skills = skill_store.list_skills()
+        except Exception:
+            pass
+        return {
+            "enabled": settings.cowork_enabled,
+            "configured": cowork_client.is_configured(),
+            "credential": cowork_client.credential_kind(),
+            "model": settings.anthropic_model,
+            "skills": skills,
+        }
+
+    @app.get("/api/wiki")
+    async def get_wiki() -> dict:
+        from ..memory.wiki.store import store as wiki_store
+        pages: list[dict] = []
+        try:
+            pages = wiki_store.list_pages()
+        except Exception:
+            pass
+        return {
+            "enabled": settings.wiki_enabled,
+            "count": len(pages),
+            "pages": pages,
+        }
+
     @app.get("/api/languages")
     async def get_languages() -> dict:
         return {"default": resolve_lang(settings.assistant_language), "languages": LANGUAGES}

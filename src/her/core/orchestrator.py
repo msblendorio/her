@@ -14,7 +14,8 @@ from time import monotonic
 from ..agentic.screen import read_screen
 from ..agentic.skills.runtime import store as skill_store
 from ..config import settings
-from ..i18n import resolve as resolve_lang
+from ..i18n import resolve as resolve_lang, wiki_overview_block
+from ..memory.wiki.store import store as wiki_store
 from ..perception.location import detect_location
 from ..memory.character import CharacterProfile, CharacterStore, refine_character
 from ..memory.collector import TranscriptCollector
@@ -88,6 +89,17 @@ class Orchestrator:
                 if recent:
                     log.info("memory: recalling %d previous sessions", len(recent))
                     bus.publish("memory.loaded", {"count": len(recent)})
+
+            # Append a tiny overview of the knowledge-base wiki so Samantha
+            # knows it exists and which topics it covers (she can wiki_query it).
+            if settings.wiki_enabled:
+                try:
+                    wiki_pages = await asyncio.to_thread(wiki_store.list_pages)
+                    overview = wiki_overview_block(wiki_pages, self._session_language)
+                    if overview:
+                        extra = f"{extra}\n\n{overview}" if extra else overview
+                except Exception:
+                    log.exception("wiki: could not build recall overview")
 
             # Start the session pre-configured with the user's persisted
             # accessibility preference, so a visually impaired user does not

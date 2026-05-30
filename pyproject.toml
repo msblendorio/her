@@ -1,6 +1,8 @@
 [project]
 name = "her"
-version = "0.3.0"
+# Version is the single source of truth in version.yaml (read by hatchling
+# below). Do not hardcode it here.
+dynamic = ["version"]
 description = "A Her-like virtual assistant: multimodal, proactive, naturally voiced."
 license = "MIT"
 license-files = ["LICENSE"]
@@ -17,6 +19,8 @@ dependencies = [
     "numpy>=1.26",
     "pillow>=10.4",
     "httpx>=0.27",
+    # Cowork + knowledge wiki: delegate to Claude and author Agent Skills.
+    "anthropic>=0.49",
     # Vision (Moondream local)
     "torch>=2.4",
     # transformers 5.x renamed internal `_tied_weights_keys` -> `all_tied_weights_keys`,
@@ -51,6 +55,13 @@ her-forget = "her.memory.store:forget_cli"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# Read the version from version.yaml (the single source of truth) rather than a
+# literal in [project]. hatchling's regex source applies the pattern below to
+# the file and captures the named `version` group.
+[tool.hatch.version]
+path = "version.yaml"
+pattern = "version:\\s*['\"]?(?P<version>[^'\"\\s]+)"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/her"]
