@@ -26,7 +26,8 @@ personal, interlinked **knowledge wiki** she maintains across sessions.*
 | **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                                      |
 | **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                                               |
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
-| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
+| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, **slash commands** (`/help`, `/schedule`, `/pulse`, …) with autocomplete, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
+| **Time-based autonomy** | **Schedule** fires tasks at fixed times (standard 5-field cron), and **Pulse** is an ambient check-in where Samantha decides on her own whether to say something — both managed from the text bar with `/schedule` and `/pulse`, active only while a session is open |
 
 
 > The assistant is **session-based**: nothing runs until you open the page
@@ -79,7 +80,7 @@ The footer shows the **OpenAI and Claude costs side by side**.
 
 **No terminal, no Python, no setup.** Just download a `.dmg`, drag, and run.
 
-1. **Download** the latest `Her-0.4.1.dmg` from the
+1. **Download** the latest `Her-0.5.0.dmg` from the
    [Releases page](https://github.com/msblendorio/her/releases/latest).
 2. **Open** the DMG and drag `Her` onto `Applications`. Eject the disk image.
 3. **First launch:** right-click `Her.app` → **Open** (only this once —
@@ -168,7 +169,7 @@ clean checkout with the `[desktop]` extra installed:
 ```bash
 brew install create-dmg               # one-time
 pip install -e ".[desktop]"           # adds py2app
-./scripts/build-dmg.sh                # produces dist/Her-0.4.1.dmg
+./scripts/build-dmg.sh                # produces dist/Her-0.5.0.dmg
 ```
 
 Quick iteration:
@@ -176,7 +177,7 @@ Quick iteration:
 - `./scripts/build-dmg.sh --app-only` — rebuild just `dist/Her.app`, skip the DMG
 - `./scripts/build-dmg.sh --dmg-only` — rewrap the existing `.app` into a fresh DMG
 
-`dist/Her-0.4.1.dmg` is a build artifact and is gitignored — publish it
+`dist/Her-0.5.0.dmg` is a build artifact and is gitignored — publish it
 as a GitHub *release asset* (Releases → Draft a new release → attach the
 `.dmg`) rather than committing it to the repo.
 
@@ -235,6 +236,72 @@ domain) or **mkcert + uvicorn TLS** for a fully local HTTPS setup
 
 She'll commonly chain tools, e.g. *"find a pizzeria near the Pantheon and
 open the map"* → `web_search` → `open_url`.
+
+---
+
+## Slash commands
+
+The text bar at the bottom is dual-purpose: type a normal message and it goes
+to Samantha; type something starting with **`/`** and it runs as a local
+command instead (handled in the browser, never sent to the model). Start
+typing `/` and an autocomplete menu appears — `↑`/`↓` to move, `Tab`/`Enter`
+to complete, `Esc` to dismiss. The bar works even before you press *Start*, so
+`/help` and `/start` are always available.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/help` | List every command (with autocomplete hints) |
+| `/clear` | Clear the terminal panel |
+| `/lang [it\|en\|es\|fr\|de]` | Switch language, or list the available ones |
+| `/memory` | Show how many memories are stored + recent summaries |
+| `/wiki` | List the knowledge-wiki pages |
+| `/tools` | List the agentic tools exposed to the model |
+| `/cowork` | Show Cowork (Claude) status — credential, model, skills |
+| `/start` · `/stop` | Start or stop the session |
+| `/schedule …` | Manage scheduled tasks — see below |
+| `/pulse …` | Manage the ambient check-in — see below |
+
+---
+
+## Time-based autonomy: Schedule & Pulse
+
+Two ways Samantha can act on her own. **Both run only while a session is
+open** — there's no background daemon, consistent with the session-based
+design (no wake word, nothing runs until you press *Start*).
+
+### Schedule — tasks at fixed times
+
+User-defined jobs expressed as a standard **5-field cron** string
+(`minute hour day-of-month month day-of-week`). When a job is due, its prompt
+is handed to Samantha as if the moment to do it had arrived, and she acts on
+it naturally. Jobs persist to `data/schedule.json` and survive restarts.
+
+```text
+/schedule                              # list jobs
+/schedule add 0 9 * * * | dammi il buongiorno e leggimi l'agenda
+/schedule add */30 9-18 * * 1-5 | ricordami di bere acqua
+/schedule rm <id>                      # delete a job
+/schedule on <id>   ·  /schedule off <id>   # enable / disable
+```
+
+The part before `|` is the cron expression; everything after it is what she
+should do. The store is polled every `SCHEDULE_POLL_INTERVAL` seconds, so
+minute-granular cron never slips, and a job can't double-fire within the same
+minute.
+
+### Pulse — ambient presence
+
+Every `interval` seconds Samantha gets a quiet self-check and **decides on her
+own whether to speak** — a reminder, something she noticed, a brief moment of
+presence — otherwise she stays silent. It never interrupts a turn already in
+progress. **Off by default** (proactive speech is opt-in); the on/off state and
+interval are saved per-user in `data/preferences.json`.
+
+```text
+/pulse              # show status (on/off, interval, running)
+/pulse on   ·  /pulse off
+/pulse 120          # set the interval to 120s and turn it on
+```
 
 ---
 
@@ -338,6 +405,10 @@ Sensible defaults are in `.env.example`. The interesting knobs:
 | `WIKI_ENABLED`            | `true`              | Master switch for the knowledge wiki (`wiki_ingest` / `wiki_query` / `wiki_lint`)                                              |
 | `WIKI_PATH`               | `data/wiki`         | Where the wiki lives (`index.md` + `log.md` + `pages/`)                                                                        |
 | `WIKI_MAX_CONTEXT_PAGES`  | `12`                | Max existing wiki pages loaded into Claude's context per ingest/query                                                          |
+| `SCHEDULE_ENABLED`        | `true`              | Master switch for cron-driven scheduled tasks (`/schedule`)                                                                    |
+| `SCHEDULE_PATH`           | `data/schedule.json`| Where scheduled jobs are persisted                                                                                            |
+| `SCHEDULE_POLL_INTERVAL`  | `20`                | Seconds between schedule polls — keep under 60 so minute-granular cron never slips                                             |
+| `PULSE_DEFAULT_INTERVAL_S`| `180`               | Default Pulse cadence in seconds; live on/off + interval live in `data/preferences.json` (toggled via `/pulse`)               |
 
 
 ---

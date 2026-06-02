@@ -22,13 +22,25 @@ log = logging.getLogger(__name__)
 @dataclass
 class Preferences:
     accessibility: bool = False
+    # Pulse (ambient proactive check-in). Off by default — proactive speech is
+    # opt-in. Interval is seconds between ticks. See core/scheduler.py.
+    pulse_enabled: bool = False
+    pulse_interval_s: float = 180.0
 
     def to_dict(self) -> dict:
-        return {"accessibility": bool(self.accessibility)}
+        return {
+            "accessibility": bool(self.accessibility),
+            "pulse_enabled": bool(self.pulse_enabled),
+            "pulse_interval_s": float(self.pulse_interval_s),
+        }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Preferences":
-        return cls(accessibility=bool(d.get("accessibility", False)))
+        return cls(
+            accessibility=bool(d.get("accessibility", False)),
+            pulse_enabled=bool(d.get("pulse_enabled", False)),
+            pulse_interval_s=float(d.get("pulse_interval_s", 180.0) or 180.0),
+        )
 
 
 class PreferencesStore:

@@ -84,6 +84,7 @@ def register_ws_routes(app: FastAPI) -> None:
         q_mem_loaded = bus.subscribe("memory.loaded")
         q_mem_saved = bus.subscribe("memory.saved")
         q_tool = bus.subscribe("agentic.tool_call")
+        q_sched = bus.subscribe("schedule.fired")
 
         async def relay(queue: asyncio.Queue, kind: str) -> None:
             try:
@@ -103,6 +104,7 @@ def register_ws_routes(app: FastAPI) -> None:
             asyncio.create_task(relay(q_mem_loaded, "memory_loaded")),
             asyncio.create_task(relay(q_mem_saved, "memory_saved")),
             asyncio.create_task(relay(q_tool, "tool_call")),
+            asyncio.create_task(relay(q_sched, "schedule_fired")),
         ]
         try:
             # Keep the connection open until the client disconnects.
@@ -127,5 +129,6 @@ def register_ws_routes(app: FastAPI) -> None:
                 (q_mem_loaded, "memory.loaded"),
                 (q_mem_saved, "memory.saved"),
                 (q_tool, "agentic.tool_call"),
+                (q_sched, "schedule.fired"),
             ]:
                 bus.unsubscribe(topic, q)

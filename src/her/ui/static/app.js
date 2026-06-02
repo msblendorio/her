@@ -16,6 +16,7 @@ const langSelect = document.getElementById("lang-select");
 const textForm = document.getElementById("text-form");
 const textInput = document.getElementById("text-input");
 const sendBtn = document.getElementById("send-btn");
+const cmdMenu = document.getElementById("cmd-menu");
 
 const LANG_KEY = "her.language";
 function getSelectedLanguage() { return langSelect.value || localStorage.getItem(LANG_KEY) || "it"; }
@@ -42,7 +43,9 @@ const UI_STRINGS = {
     who_user: "tu  ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "errore",
     a11y_on: "modalità accessibilità",
-    send: "invia", text_placeholder: "scrivi un messaggio…",
+    send: "invia", text_placeholder: "scrivi un messaggio o / per i comandi…",
+    text_needs_session: "premi Start (o /start) per parlare con Samantha.",
+    schedule_fired: "⏰ attività pianificata [{when}]: {prompt}",
   },
   en: {
     start: "Start", stop: "Stop",
@@ -64,7 +67,9 @@ const UI_STRINGS = {
     who_user: "you ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "error",
     a11y_on: "accessibility mode",
-    send: "send", text_placeholder: "type a message…",
+    send: "send", text_placeholder: "type a message, or / for commands…",
+    text_needs_session: "press Start (or /start) to talk to Samantha.",
+    schedule_fired: "⏰ scheduled task [{when}]: {prompt}",
   },
   es: {
     start: "Iniciar", stop: "Parar",
@@ -86,7 +91,9 @@ const UI_STRINGS = {
     who_user: "tú  ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "error",
     a11y_on: "modo accesibilidad",
-    send: "enviar", text_placeholder: "escribe un mensaje…",
+    send: "enviar", text_placeholder: "escribe un mensaje o / para los comandos…",
+    text_needs_session: "pulsa Start (o /start) para hablar con Samantha.",
+    schedule_fired: "⏰ tarea programada [{when}]: {prompt}",
   },
   fr: {
     start: "Démarrer", stop: "Arrêter",
@@ -108,7 +115,9 @@ const UI_STRINGS = {
     who_user: "toi ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "erreur",
     a11y_on: "mode accessibilité",
-    send: "envoyer", text_placeholder: "écris un message…",
+    send: "envoyer", text_placeholder: "écris un message, ou / pour les commandes…",
+    text_needs_session: "appuie sur Start (ou /start) pour parler à Samantha.",
+    schedule_fired: "⏰ tâche programmée [{when}] : {prompt}",
   },
   de: {
     start: "Start", stop: "Stopp",
@@ -130,7 +139,9 @@ const UI_STRINGS = {
     who_user: "du  ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "Fehler",
     a11y_on: "Barrierefreiheit",
-    send: "senden", text_placeholder: "schreib eine Nachricht…",
+    send: "senden", text_placeholder: "schreib eine Nachricht, oder / für Befehle…",
+    text_needs_session: "drück Start (oder /start), um mit Samantha zu sprechen.",
+    schedule_fired: "⏰ geplante Aufgabe [{when}]: {prompt}",
   },
 };
 
@@ -149,9 +160,12 @@ function applyLanguage() {
   sendBtn.textContent = t("send");
 }
 
+// The input field is always usable so slash commands (/help, /start, …) work
+// even when no session is running. `on` only tracks whether free-form text
+// reaches the live session; the submit handler enforces that.
+let canSendText = false;
 function setTextInputEnabled(on) {
-  textInput.disabled = !on;
-  sendBtn.disabled = !on;
+  canSendText = !!on;
 }
 
 let running = false;
@@ -396,6 +410,10 @@ async function startSession() {
       case "error":
         appendLine("err", t("who_err"), JSON.stringify(m.data));
         break;
+      case "schedule_fired":
+        appendLine("sys", t("who_sys"),
+          t("schedule_fired", { when: m.data.when, prompt: m.data.prompt }));
+        break;
       case "memory_loaded":
         appendLine("sys", t("who_mem"), t("mem_loaded", { n: m.data.count }));
         break;
@@ -473,11 +491,287 @@ btn.addEventListener("click", () => {
   else stopSession();
 });
 
+// ── Slash commands ──────────────────────────────────────────────────────
+// A small client-side command system. Anything the user types starting with
+// "/" is handled here instead of being sent to the model. `/help` lists them.
+function sysLine(text) { return appendLine("sys", t("who_sys"), text); }
+function errLine(text) { return appendLine("err", t("who_err"), text); }
+
+async function apiGet(path) {
+  const r = await fetch(path);
+  return r.json();
+}
+async function apiSend(path, method, body) {
+  const r = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  return { ok: r.ok, data };
+}
+
+// Slash commands are a power-user surface: the keywords and their help text
+// stay in English — the universal CLI convention (Claude Code, Slack, IDEs).
+// Only strings that surface in the normal conversation flow (notifications,
+// the no-session hint, the input placeholder) are localized via UI_STRINGS.
+const CMD_TEXT = {
+  help: "list commands", clear: "clear the terminal",
+  lang: "change language or list the available ones",
+  memory: "show saved memories", wiki: "list wiki entries",
+  tools: "list agentic tools", cowork: "Cowork (Claude) status",
+  start: "start the session", stop: "stop the session",
+  schedule: "tasks scheduled at fixed times (cron)",
+  pulse: "periodic presence: on/off or interval",
+};
+function cmdDesc(name) {
+  return CMD_TEXT[name.slice(1)] || name.slice(1);
+}
+
+// ── command handlers ──
+function cmdHelp() {
+  sysLine("available commands (type / for autocomplete):");
+  for (const c of COMMANDS) {
+    const a = c.args ? " " + c.args : "";
+    sysLine(`  ${c.name}${a}  —  ${cmdDesc(c.name)}`);
+  }
+}
+
+function cmdClear() {
+  terminalEl.innerHTML = "";
+  lastAssistantLineEl = null;
+  assistantBuffer = "";
+}
+
+function cmdLang(args) {
+  const code = (args[0] || "").toLowerCase();
+  if (!code) {
+    const list = Array.from(langSelect.options).map((o) => `${o.value} (${o.textContent})`);
+    sysLine(list.join(", "));
+    return;
+  }
+  const opt = Array.from(langSelect.options).find((o) => o.value === code);
+  if (!opt) { errLine(`?: ${code}`); return; }
+  langSelect.value = code;
+  langSelect.dispatchEvent(new Event("change"));
+}
+
+async function cmdMemory() {
+  const d = await apiGet("/api/memory");
+  if (!d.enabled) { sysLine("memory: off"); return; }
+  sysLine(`${t("memories")}: ${d.count}`);
+  for (const e of (d.entries || []).slice(-5)) sysLine(`  · ${e.summary}`);
+}
+
+async function cmdWiki() {
+  const d = await apiGet("/api/wiki");
+  sysLine(`wiki: ${d.count || 0}${d.enabled ? "" : " (off)"}`);
+  for (const p of (d.pages || []).slice(0, 20)) sysLine(`  · ${p.title || p.slug}`);
+}
+
+async function cmdTools() {
+  const d = await apiGet("/api/tools");
+  const names = (d.tools || []).map((x) => x.name);
+  sysLine(`tools (${names.length})${d.enabled ? "" : " — off"}: ${names.join(", ")}`);
+}
+
+async function cmdCowork() {
+  const d = await apiGet("/api/cowork");
+  sysLine(`cowork: ${d.configured ? "on" : "off"} · ${d.model || "?"} · ${d.credential || "—"} · skills ${(d.skills || []).length}`);
+}
+
+function cmdStart() {
+  if (running) { sysLine(t("session_active")); return; }
+  startSession();
+}
+function cmdStop() {
+  if (!running) { sysLine(t("disconnected")); return; }
+  stopSession();
+}
+
+function fmtJob(j) {
+  return `  #${j.id}  [${j.when}]  ${j.prompt}${j.enabled ? "" : "  (off)"}`;
+}
+
+async function cmdSchedule(args, raw) {
+  const sub = (args[0] || "list").toLowerCase();
+  if (sub === "list" || sub === "ls") {
+    const d = await apiGet("/api/schedule");
+    const jobs = d.jobs || [];
+    sysLine(`schedule (${jobs.length})${d.enabled ? "" : " — off"}:`);
+    for (const j of jobs) sysLine(fmtJob(j));
+    if (!jobs.length) sysLine("  —  /schedule add <cron> | <testo>");
+    return;
+  }
+  if (sub === "add") {
+    const m = raw.match(/^\/schedule\s+add\s+([\s\S]+)$/i);
+    if (!m || !m[1].includes("|")) {
+      errLine("uso: /schedule add <cron> | <testo>   (es. 0 9 * * * | dammi il buongiorno)");
+      return;
+    }
+    const [cronPart, ...rest] = m[1].split("|");
+    const when = cronPart.trim();
+    const prompt = rest.join("|").trim();
+    const { ok, data } = await apiSend("/api/schedule", "POST", { when, prompt });
+    if (!ok) { errLine(data.error || "errore"); return; }
+    sysLine("ok:");
+    sysLine(fmtJob(data.job));
+    return;
+  }
+  if (sub === "rm" || sub === "del" || sub === "remove") {
+    const id = args[1];
+    if (!id) { errLine("uso: /schedule rm <id>"); return; }
+    const { data } = await apiSend(`/api/schedule/${id}`, "DELETE");
+    sysLine(data.ok ? `ok: #${id} rimosso` : `?: #${id}`);
+    return;
+  }
+  if (sub === "on" || sub === "off") {
+    const id = args[1];
+    if (!id) { errLine(`uso: /schedule ${sub} <id>`); return; }
+    const want = sub === "on";
+    const d = await apiGet("/api/schedule");
+    const job = (d.jobs || []).find((j) => j.id === id);
+    if (!job) { errLine(`?: #${id}`); return; }
+    if (job.enabled !== want) await apiSend(`/api/schedule/${id}/toggle`, "POST");
+    sysLine(`ok: #${id} ${want ? "on" : "off"}`);
+    return;
+  }
+  errLine(`unknown command: /schedule ${sub} — try /help`);
+}
+
+function renderPulse(s) {
+  sysLine(
+    `pulse: ${s.enabled ? "on" : "off"} · ` +
+    `interval ${Math.round(s.interval_s)}s · ` +
+    `${s.active ? "running" : "stopped"}`
+  );
+}
+
+async function cmdPulse(args) {
+  const a = (args[0] || "").toLowerCase();
+  if (!a) { renderPulse(await apiGet("/api/pulse")); return; }
+  let body = null;
+  if (a === "on") body = { enabled: true };
+  else if (a === "off") body = { enabled: false };
+  else if (/^\d+$/.test(a)) body = { enabled: true, interval_s: parseInt(a, 10) };
+  else { errLine("uso: /pulse [on | off | <secondi>]"); return; }
+  const { data } = await apiSend("/api/pulse", "POST", body);
+  renderPulse(data);
+}
+
+const COMMANDS = [
+  { name: "/help", run: cmdHelp },
+  { name: "/clear", run: cmdClear },
+  { name: "/lang", args: "[it|en|es|fr|de]", run: cmdLang },
+  { name: "/memory", run: cmdMemory },
+  { name: "/wiki", run: cmdWiki },
+  { name: "/tools", run: cmdTools },
+  { name: "/cowork", run: cmdCowork },
+  { name: "/start", run: cmdStart },
+  { name: "/stop", run: cmdStop },
+  { name: "/schedule", args: "[list | add <cron> | <text> | rm <id> | on|off <id>]", run: cmdSchedule },
+  { name: "/pulse", args: "[on | off | <seconds>]", run: cmdPulse },
+];
+
+async function handleCommand(raw) {
+  appendLine("user", t("who_user"), raw);
+  const parts = raw.slice(1).split(/\s+/);
+  const name = "/" + (parts.shift() || "").toLowerCase();
+  const cmd = COMMANDS.find((c) => c.name === name);
+  if (!cmd) { errLine(`unknown command: ${name} — try /help`); return; }
+  try {
+    await cmd.run(parts, raw);
+  } catch (err) {
+    errLine(String(err && err.message ? err.message : err));
+  }
+}
+
+// ── autocomplete menu ──
+let menuItems = [];
+let menuIndex = -1;
+
+function commandQuery() {
+  const v = textInput.value;
+  if (!v.startsWith("/") || v.includes(" ")) return null;
+  return v.slice(1).toLowerCase();
+}
+
+function hideMenu() {
+  cmdMenu.hidden = true;
+  menuItems = [];
+  menuIndex = -1;
+}
+
+function renderMenu() {
+  const q = commandQuery();
+  if (q === null) { hideMenu(); return; }
+  menuItems = COMMANDS.filter((c) => c.name.slice(1).startsWith(q));
+  if (!menuItems.length) { hideMenu(); return; }
+  if (menuIndex >= menuItems.length) menuIndex = menuItems.length - 1;
+  cmdMenu.innerHTML = "";
+  menuItems.forEach((c, i) => {
+    const li = document.createElement("li");
+    if (i === menuIndex) li.classList.add("active");
+    const n = document.createElement("span");
+    n.className = "cmd-name"; n.textContent = c.name;
+    li.appendChild(n);
+    if (c.args) {
+      const a = document.createElement("span");
+      a.className = "cmd-args"; a.textContent = c.args;
+      li.appendChild(a);
+    }
+    const d = document.createElement("span");
+    d.className = "cmd-desc"; d.textContent = cmdDesc(c.name);
+    li.appendChild(d);
+    li.addEventListener("mousedown", (e) => { e.preventDefault(); acceptMenu(i); });
+    cmdMenu.appendChild(li);
+  });
+  cmdMenu.hidden = false;
+}
+
+function acceptMenu(i) {
+  const c = menuItems[i] || menuItems[0];
+  if (!c) return;
+  // Complete to the command name + a trailing space, ready for args.
+  textInput.value = c.name + " ";
+  hideMenu();
+  textInput.focus();
+}
+
+textInput.addEventListener("input", () => { menuIndex = -1; renderMenu(); });
+textInput.addEventListener("blur", () => setTimeout(hideMenu, 120));
+textInput.addEventListener("keydown", (e) => {
+  if (cmdMenu.hidden || !menuItems.length) return;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    menuIndex = (menuIndex + 1) % menuItems.length;
+    renderMenu();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    menuIndex = (menuIndex - 1 + menuItems.length) % menuItems.length;
+    renderMenu();
+  } else if (e.key === "Tab") {
+    e.preventDefault();
+    acceptMenu(menuIndex < 0 ? 0 : menuIndex);
+  } else if (e.key === "Enter") {
+    // Only intercept Enter when an item is actively highlighted; otherwise
+    // let the form submit (so typing a full command + Enter runs it).
+    if (menuIndex >= 0) { e.preventDefault(); acceptMenu(menuIndex); }
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    hideMenu();
+  }
+});
+
 textForm.addEventListener("submit", async (e) => {
   e.preventDefault();
+  hideMenu();
   const text = textInput.value.trim();
-  if (!text || !running) return;
+  if (!text) return;
   textInput.value = "";
+  if (text.startsWith("/")) { await handleCommand(text); return; }
+  if (!canSendText || !running) { sysLine(t("text_needs_session")); return; }
   try {
     await fetch("/api/text", {
       method: "POST",
@@ -485,7 +779,7 @@ textForm.addEventListener("submit", async (e) => {
       body: JSON.stringify({ text }),
     });
   } catch {
-    appendLine("err", t("who_err"), "send failed");
+    errLine("send failed");
   }
 });
 

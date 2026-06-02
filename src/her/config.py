@@ -92,5 +92,18 @@ class Settings(BaseSettings):
     # for an ingest/query, to bound token cost.
     wiki_max_context_pages: int = 12
 
+    # ── Time-based autonomy (see core/scheduler.py) ───────────────────────
+    # Schedule: user-defined cron jobs that hand Samantha a prompt at fixed
+    # times. Pulse: a recurring ambient self-check where she decides whether
+    # to say anything proactively. Both run only while a session is active.
+    # The schedule store is polled every ``schedule_poll_interval`` seconds;
+    # keeping it under a minute guarantees minute-granular cron never slips.
+    schedule_enabled: bool = True
+    schedule_path: str = "data/schedule.json"
+    schedule_poll_interval: float = 20.0
+    # Default pulse cadence; the live on/off + interval are persisted per-user
+    # in preferences.json (toggled via the /pulse command).
+    pulse_default_interval_s: float = 180.0
+
 
 settings = Settings()

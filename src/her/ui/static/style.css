@@ -97,7 +97,32 @@ main {
   border-top: 1px solid var(--border);
   background: var(--panel);
   padding: 8px 16px;
+  position: relative;
 }
+
+/* Slash-command autocomplete — floats above the input. */
+.cmd-menu {
+  position: absolute;
+  left: 16px; right: 16px; bottom: calc(100% - 4px);
+  margin: 0; padding: 4px;
+  list-style: none;
+  max-height: 240px; overflow-y: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.45);
+  z-index: 20;
+}
+.cmd-menu[hidden] { display: none; }
+.cmd-menu li {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 5px 8px; border-radius: 6px; cursor: pointer;
+}
+.cmd-menu li .cmd-name { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.cmd-menu li .cmd-args { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.cmd-menu li .cmd-desc { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+.cmd-menu li.active,
+.cmd-menu li:hover { background: var(--panel); }
+.cmd-menu li.active .cmd-name { color: var(--accent-2); }
 .input-bar form {
   display: flex; align-items: center; gap: 8px;
 }

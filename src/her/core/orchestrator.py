@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+from datetime import datetime
 from time import monotonic
 
 from ..agentic.screen import read_screen
@@ -29,6 +30,7 @@ from ..reasoning.empathy import EmpathyTracker
 from ..reasoning.realtime_session import RealtimeSession
 from .event_bus import bus
 from .preferences import PreferencesStore
+from .scheduler import ScheduleStore, minute_marker
 from .state import state
 from .usage import usage
 
@@ -41,6 +43,12 @@ class Orchestrator:
         self._vision_task: asyncio.Task | None = None
         self._screen_task: asyncio.Task | None = None
         self._skills_task: asyncio.Task | None = None
+        # Time-based autonomy: cron-driven scheduled tasks + ambient pulse.
+        # Both loops live only while a session is active. The job store is
+        # read live on every poll, so add/remove take effect without restart.
+        self.schedule_store = ScheduleStore(settings.schedule_path)
+        self._schedule_task: asyncio.Task | None = None
+        self._pulse_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         # The world model is built once and kept around; the app does not yet
         # consume its outputs, but the hook is here for when V-JEPA is wired in.
@@ -168,6 +176,16 @@ class Orchestrator:
                 run_vision_loop(self._on_caption), name="vision-loop"
             )
 
+            # Time-based autonomy loops (active-session only).
+            if settings.schedule_enabled:
+                self._schedule_task = asyncio.create_task(
+                    self._run_schedule_loop(), name="schedule-loop"
+                )
+            if self._prefs.pulse_enabled:
+                self._pulse_task = asyncio.create_task(
+                    self._run_pulse_loop(), name="pulse-loop"
+                )
+
             state.active = True
             state.accessibility = start_with_a11y
             state.started_at = monotonic()
@@ -210,6 +228,16 @@ class Orchestrator:
                 except (asyncio.CancelledError, Exception):
                     pass
                 self._skills_task = None
+
+            for attr in ("_schedule_task", "_pulse_task"):
+                task = getattr(self, attr)
+                if task is not None:
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    setattr(self, attr, None)
 
             # Tear down the empathy tracker before the collector so it
             # releases its subscription to realtime.user_text first.
@@ -455,6 +483,94 @@ class Orchestrator:
         except asyncio.CancelledError:
             log.info("accessibility screen loop cancelled")
             raise
+
+    # ── Time-based autonomy ───────────────────────────────────────────────
+    async def _run_schedule_loop(self) -> None:
+        """Poll the schedule store and fire any cron job that's due.
+
+        The store is re-read each tick so jobs added/removed mid-session take
+        effect immediately. ``mark_ran`` records the firing minute so a job
+        can't double-fire within the same minute even across short polls.
+        """
+        interval = max(5.0, float(settings.schedule_poll_interval))
+        log.info("schedule loop started (poll=%.0fs)", interval)
+        try:
+            while True:
+                try:
+                    now = datetime.now()
+                    marker = minute_marker(now)
+                    for job in self.schedule_store.due(now):
+                        self.schedule_store.mark_ran(job.id, marker)
+                        log.info("schedule: firing job %s (%r)", job.id, job.when)
+                        bus.publish("schedule.fired", {
+                            "id": job.id, "when": job.when, "prompt": job.prompt,
+                        })
+                        if self.realtime is not None:
+                            await self.realtime.run_scheduled_task(job.prompt)
+                except Exception:
+                    log.exception("schedule: poll failed")
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            log.info("schedule loop cancelled")
+            raise
+
+    async def _run_pulse_loop(self) -> None:
+        """Every ``pulse_interval_s`` seconds, give Samantha a chance to speak
+        proactively. The realtime session itself skips the tick when a
+        response is already in flight; we additionally hold off while she's
+        mid-thought or mid-sentence so a pulse never steps on a live turn.
+        """
+        interval = max(30.0, float(self._prefs.pulse_interval_s))
+        log.info("pulse loop started (interval=%.0fs)", interval)
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                if self.realtime is None or state.speaking or state.thinking:
+                    continue
+                try:
+                    await self.realtime.pulse()
+                except Exception:
+                    log.exception("pulse: tick failed")
+        except asyncio.CancelledError:
+            log.info("pulse loop cancelled")
+            raise
+
+    def pulse_status(self) -> dict:
+        active = self._pulse_task is not None and not self._pulse_task.done()
+        return {
+            "enabled": bool(self._prefs.pulse_enabled),
+            "interval_s": float(self._prefs.pulse_interval_s),
+            "active": active,
+        }
+
+    async def set_pulse(
+        self, enabled: bool | None = None, interval_s: float | None = None
+    ) -> dict:
+        """Toggle the pulse on/off and/or change its interval, persist the
+        choice, and (if a session is live) restart the loop to apply it.
+        """
+        if enabled is not None:
+            self._prefs.pulse_enabled = bool(enabled)
+        if interval_s is not None:
+            self._prefs.pulse_interval_s = max(30.0, float(interval_s))
+        try:
+            self.prefs_store.save(self._prefs)
+        except Exception:
+            log.exception("preferences: save failed (pulse)")
+
+        # Restart the loop so a new interval / on-off takes effect now.
+        if self._pulse_task is not None:
+            self._pulse_task.cancel()
+            try:
+                await self._pulse_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._pulse_task = None
+        if state.active and self._prefs.pulse_enabled:
+            self._pulse_task = asyncio.create_task(
+                self._run_pulse_loop(), name="pulse-loop"
+            )
+        return self.pulse_status()
 
 
 orchestrator = Orchestrator()

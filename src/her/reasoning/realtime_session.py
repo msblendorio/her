@@ -37,8 +37,10 @@ from ..i18n import (
     cowork_addendum,
     empathy_addendum,
     learned_skills_addendum,
+    pulse_prompt,
     resolve as resolve_lang,
     scene_prefix,
+    scheduled_task_prefix,
     screen_prefix,
     system_prompt,
     time_space_awareness,
@@ -293,6 +295,61 @@ class RealtimeSession:
             },
         }
         await self._send_event(item)
+
+    async def pulse(self) -> None:
+        """Ambient self-check tick: nudge the model to decide, on its own,
+        whether to say something proactively.
+
+        Skipped entirely when a response is already in flight (the user is
+        being answered, or a previous tick is still talking) so the pulse can
+        never interrupt a real exchange. Unlike inject_scene, this *does*
+        trigger a response — but the prompt tells Samantha most ticks should
+        end in silence.
+        """
+        if not self._ws or self._active_response_id is not None:
+            return
+        await self._send_event({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {"type": "input_text", "text": pulse_prompt(self.language)}
+                ],
+            },
+        })
+        await self._send_event({"type": "response.create"})
+
+    async def run_scheduled_task(self, prompt: str) -> None:
+        """Hand Samantha a stored scheduled instruction and have her act on it.
+
+        Injected as a system message (not a fake user turn) prefixed so the
+        model treats it as "the moment to do this has come". Cancels any
+        in-flight response first so the scheduled task takes precedence,
+        mirroring send_text().
+        """
+        prompt = (prompt or "").strip()
+        if not self._ws or not prompt:
+            return
+        if self._active_response_id is not None:
+            try:
+                await self._send_event({"type": "response.cancel"})
+            except Exception:
+                pass
+        await self._send_event({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": f"{scheduled_task_prefix(self.language)}\n{prompt}",
+                    }
+                ],
+            },
+        })
+        await self._send_event({"type": "response.create"})
 
     async def _recv_loop(self) -> None:
         assert self._ws is not None

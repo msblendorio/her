@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
@@ -120,6 +120,61 @@ def create_app() -> FastAPI:
                 for t in TOOLS
             ],
         }
+
+    # ── Schedule (cron-driven tasks) ─────────────────────────────────────
+    @app.get("/api/schedule")
+    async def get_schedule() -> dict:
+        jobs = orchestrator.schedule_store.list()
+        return {
+            "enabled": settings.schedule_enabled,
+            "jobs": [j.to_dict() for j in jobs],
+        }
+
+    @app.post("/api/schedule")
+    async def add_schedule(request: Request) -> JSONResponse:
+        when = prompt = ""
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                when = str(body.get("when") or "").strip()
+                prompt = str(body.get("prompt") or "").strip()
+        except Exception:
+            pass
+        try:
+            job = orchestrator.schedule_store.add(when, prompt)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        return JSONResponse({"ok": True, "job": job.to_dict()})
+
+    @app.delete("/api/schedule/{job_id}")
+    async def delete_schedule(job_id: str) -> dict:
+        return {"ok": orchestrator.schedule_store.remove(job_id)}
+
+    @app.post("/api/schedule/{job_id}/toggle")
+    async def toggle_schedule(job_id: str) -> JSONResponse:
+        job = orchestrator.schedule_store.toggle(job_id)
+        if job is None:
+            return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True, "job": job.to_dict()})
+
+    # ── Pulse (ambient proactive check-in) ───────────────────────────────
+    @app.get("/api/pulse")
+    async def get_pulse() -> dict:
+        return orchestrator.pulse_status()
+
+    @app.post("/api/pulse")
+    async def set_pulse(request: Request) -> dict:
+        enabled = interval_s = None
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                if "enabled" in body and body["enabled"] is not None:
+                    enabled = bool(body["enabled"])
+                if body.get("interval_s") is not None:
+                    interval_s = float(body["interval_s"])
+        except Exception:
+            pass
+        return await orchestrator.set_pulse(enabled=enabled, interval_s=interval_s)
 
     @app.post("/api/session/start")
     async def start_session(request: Request) -> dict:
