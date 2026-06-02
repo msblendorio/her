@@ -158,6 +158,10 @@ function applyLanguage() {
   btn.textContent = running ? t("stop") : t("start");
   textInput.placeholder = t("text_placeholder");
   sendBtn.textContent = t("send");
+  // The header meta line embeds a translated word ("ricordi"/"memories"/…),
+  // so it has to be rebuilt too — otherwise it stays in whatever language was
+  // active when config first loaded.
+  if (lastConfig) renderHeaderConfig(lastConfig);
 }
 
 // The input field is always usable so slash commands (/help, /start, …) work
@@ -783,7 +787,9 @@ textForm.addEventListener("submit", async (e) => {
   }
 });
 
+let lastConfig = null;
 function renderHeaderConfig(c) {
+  lastConfig = c;
   const memTag = c.memory_enabled ? ` · ${c.memory_count} ${t("memories")}` : "";
   const verTag = c.version ? ` · v${c.version}` : "";
   cfgLine.textContent = `${c.model} · ${c.voice} · vision ${c.vision_enabled ? "on" : "off"}${memTag}${verTag}`;
