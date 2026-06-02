@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
@@ -29,8 +29,19 @@ def create_app() -> FastAPI:
     register_ws_routes(app)
 
     @app.get("/")
-    async def index() -> FileResponse:
-        return FileResponse(str(STATIC_DIR / "index.html"))
+    async def index() -> HTMLResponse:
+        # Stamp the version onto the cached UI assets so a new build always
+        # fetches fresh JS/CSS. The packaged app runs inside a WKWebView whose
+        # NetworkCache otherwise happily serves the previous version's app.js
+        # (e.g. a /help typed after an update would reach the model because the
+        # stale bundle had no slash-command handler). The HTML itself is sent
+        # no-store so this query string is re-read on every launch.
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        for asset in ("style.css", "app.js"):
+            html = html.replace(
+                f"/static/{asset}", f"/static/{asset}?v={__version__}"
+            )
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/state")
     async def get_state() -> dict:

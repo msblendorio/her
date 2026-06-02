@@ -143,6 +143,10 @@ OPTIONS = {
     ],
     "resources": [
         str(ROOT / "src" / "her" / "ui"),
+        # Ship version.yaml so her.__version__ resolves at runtime inside the
+        # bundle (it lands in Contents/Resources, an ancestor of the her
+        # package dir, where _version_from_yaml walks up to find it).
+        str(ROOT / "version.yaml"),
     ],
     # py2app strips bytecode by default which breaks some pkg_resources
     # lookups — keep .py files.
