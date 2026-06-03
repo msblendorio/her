@@ -364,12 +364,50 @@ _SCHEDULED_TASK_PREFIX: dict[str, str] = {
 }
 
 
+# Prefix for a freshly uploaded file. The filename that follows is the source;
+# Samantha asks the user whether to keep it in the wiki or treat it as a
+# one-off. The actual ingest/discard is driven by the UI buttons or tools.
+_UPLOAD_QUESTION_PREFIX: dict[str, str] = {
+    "it": (
+        "[file appena caricato] L'utente ha caricato un file. Chiedigli con "
+        "naturalezza se vuoi conservarlo nella sua wiki di conoscenza oppure se "
+        "è solo temporaneo (lo leggi adesso e poi lo elimini). Il file è:"
+    ),
+    "en": (
+        "[file just uploaded] The user uploaded a file. Naturally ask them "
+        "whether to keep it in their knowledge wiki, or if it's just temporary "
+        "(you read it now and then delete it). The file is:"
+    ),
+    "es": (
+        "[archivo recién subido] El usuario subió un archivo. Pregúntale con "
+        "naturalidad si quieres conservarlo en su wiki de conocimiento o si es "
+        "solo temporal (lo lees ahora y luego lo eliminas). El archivo es:"
+    ),
+    "fr": (
+        "[fichier tout juste importé] L'utilisateur a importé un fichier. "
+        "Demande-lui naturellement si tu dois le garder dans son wiki de "
+        "connaissances ou s'il est juste temporaire (tu le lis maintenant puis "
+        "tu le supprimes). Le fichier est :"
+    ),
+    "de": (
+        "[gerade hochgeladene Datei] Der Nutzer hat eine Datei hochgeladen. "
+        "Frag ihn natürlich, ob du sie in seinem Wissens-Wiki behalten sollst "
+        "oder ob sie nur temporär ist (du liest sie jetzt und löschst sie dann). "
+        "Die Datei ist:"
+    ),
+}
+
+
 def pulse_prompt(lang: str) -> str:
     return _PULSE_PROMPT[resolve(lang)]
 
 
 def scheduled_task_prefix(lang: str) -> str:
     return _SCHEDULED_TASK_PREFIX[resolve(lang)]
+
+
+def upload_question_prefix(lang: str) -> str:
+    return _UPLOAD_QUESTION_PREFIX[resolve(lang)]
 
 
 # ── Learned-skills index ────────────────────────────────────────────────

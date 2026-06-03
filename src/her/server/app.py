@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
 from ..agentic.tools import TOOLS
 from ..config import settings
+from ..core.event_bus import bus
 from ..core.orchestrator import orchestrator
 from ..core.state import state
 from ..i18n import LANGUAGES, resolve as resolve_lang
@@ -58,6 +60,7 @@ def create_app() -> FastAPI:
         return {
             "version": __version__,
             "model": settings.openai_realtime_model,
+            "anthropic_model": settings.anthropic_model,
             "voice": settings.openai_voice,
             "language": settings.assistant_language,
             "vision_enabled": settings.vision_enabled,
@@ -217,6 +220,91 @@ def create_app() -> FastAPI:
         if text:
             await orchestrator.push_user_text(text)
         return {"ok": True}
+
+    # ── File upload → knowledge wiki ─────────────────────────────────────
+    @app.post("/api/upload")
+    async def upload_file(file: UploadFile = File(...)) -> JSONResponse:
+        from ..memory.wiki import uploads as wiki_uploads
+        from ..memory.wiki.store import slugify
+
+        name = file.filename or "upload"
+        if not wiki_uploads.is_allowed(name):
+            allowed = ", ".join(sorted(wiki_uploads.ALLOWED_EXTS))
+            return JSONResponse(
+                {"ok": False, "error": f"unsupported file type (allowed: {allowed})"},
+                status_code=400,
+            )
+        data = await file.read()
+        max_bytes = settings.upload_max_mb * 1024 * 1024
+        if len(data) > max_bytes:
+            return JSONResponse(
+                {"ok": False, "error": f"file too large (max {settings.upload_max_mb} MB)"},
+                status_code=400,
+            )
+
+        dest_dir = Path(settings.uploads_path).expanduser()
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        stem = slugify(Path(name).stem)
+        safe = f"{int(time.time())}-{stem}{Path(name).suffix.lower()}"
+        dest = dest_dir / safe
+        dest.write_bytes(data)
+
+        item = wiki_uploads.pending.add(dest, name)
+        # If a session is live, let Samantha voice the keep-or-temporary question.
+        try:
+            await orchestrator.ask_about_upload(name)
+        except Exception:
+            log.debug("upload: ask_about_upload failed", exc_info=True)
+        return JSONResponse({"ok": True, "id": item.id, "label": name})
+
+    @app.post("/api/upload/{upload_id}/keep")
+    async def upload_keep(upload_id: str) -> JSONResponse:
+        from ..memory.wiki import uploads as wiki_uploads
+        from ..memory.wiki.engine import engine as wiki_engine
+
+        item = wiki_uploads.pending.pop(upload_id)
+        if item is None:
+            return JSONResponse({"ok": False, "error": "unknown upload"}, status_code=404)
+        try:
+            msg = await wiki_engine.ingest_file(str(item.path), label=item.label)
+        except Exception as e:
+            log.exception("upload keep: ingest failed")
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        bus.publish("wiki.ingested", {"title": item.label})
+        return JSONResponse({"ok": True, "message": msg})
+
+    @app.post("/api/upload/{upload_id}/discard")
+    async def upload_discard(upload_id: str) -> JSONResponse:
+        from ..memory.wiki import uploads as wiki_uploads
+        from ..memory.wiki.engine import engine as wiki_engine
+
+        item = wiki_uploads.pending.pop(upload_id)
+        if item is None:
+            return JSONResponse({"ok": False, "error": "unknown upload"}, status_code=404)
+        # Temporary file: Opus reads it for the current conversation, the digest
+        # is injected into the live session, then the original is deleted.
+        try:
+            digest = await wiki_engine.read_file(str(item.path), label=item.label)
+        except Exception as e:
+            log.exception("upload discard: read failed")
+            digest = ""
+            err = str(e)
+        else:
+            err = ""
+        finally:
+            try:
+                item.path.unlink(missing_ok=True)
+            except Exception:
+                log.debug("upload discard: unlink failed", exc_info=True)
+        if err:
+            return JSONResponse({"ok": False, "error": err}, status_code=500)
+        try:
+            await orchestrator.note_to_session(
+                f"[{item.label}] {digest}"
+            )
+        except Exception:
+            log.debug("upload discard: note_to_session failed", exc_info=True)
+        return JSONResponse({"ok": True, "message": digest})
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:

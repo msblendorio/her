@@ -111,6 +111,7 @@ class CoworkClient:
         json_schema: dict | None = None,
         thinking: bool = True,
         effort: str = "high",
+        attachments: list[dict] | None = None,
     ) -> str:
         """Run one Messages request and return the assistant text.
 
@@ -119,6 +120,10 @@ class CoworkClient:
         returned string is guaranteed-parseable JSON (thinking is disabled to
         keep the output clean). Otherwise the call streams with adaptive
         thinking and returns the concatenated text blocks.
+
+        ``attachments`` are Anthropic content blocks (e.g. a ``document`` block
+        for a PDF or an ``image`` block) prepended to the user turn so Opus
+        reads/sees the file directly — used by the wiki when ingesting uploads.
         """
         client = self._get_client()
         model = settings.anthropic_model
@@ -131,7 +136,11 @@ class CoworkClient:
             "text": system,
             "cache_control": {"type": "ephemeral"},
         }]
-        messages = [{"role": "user", "content": user}]
+        if attachments:
+            content = [*attachments, {"type": "text", "text": user}]
+        else:
+            content = user
+        messages = [{"role": "user", "content": content}]
 
         if json_schema is not None:
             # Structured output: no thinking, no streaming (output is small).

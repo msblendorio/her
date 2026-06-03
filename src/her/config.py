@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     # for an ingest/query, to bound token cost.
     wiki_max_context_pages: int = 12
 
+    # File uploads → wiki. A file dropped in the UI (pdf/md/txt/docx/jpg/png)
+    # is saved here, read by Claude Opus (natively for pdf/images, extracted
+    # text for docx/txt/md), and ingested into the wiki. The size cap stays
+    # below Anthropic's 32MB document limit.
+    uploads_path: str = "data/uploads"
+    upload_max_mb: int = 25
+
     # ── Time-based autonomy (see core/scheduler.py) ───────────────────────
     # Schedule: user-defined cron jobs that hand Samantha a prompt at fixed
     # times. Pulse: a recurring ambient self-check where she decides whether

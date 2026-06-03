@@ -15,6 +15,7 @@ import logging
 from ...config import settings
 from ...cowork.client import client as cowork
 from .store import store
+from .uploads import extract_source
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,14 @@ _QUERY_SYSTEM = (
     "tables and long URLs."
 )
 
+_READ_SYSTEM = (
+    "You read a single file the user just shared and report what it contains, "
+    "for use in the current conversation only — it will NOT be saved. Give a "
+    "faithful, concise digest: the key points, facts, and anything the user "
+    "would want to act on. Lead with a one-line gist, then the detail. Your "
+    "output will be read aloud, so avoid raw markdown tables and long URLs."
+)
+
 _LINT_SYSTEM = (
     "You are the health-checker for a persistent markdown knowledge wiki. Given "
     "the index and pages, report: contradictions between pages, stale or "
@@ -96,16 +105,48 @@ class WikiEngine:
                 "The knowledge wiki needs an Anthropic credential (API key or "
                 "Claude Pro/Max token) before I can file this away."
             )
-        await asyncio.to_thread(store.ensure_init)
         source_label = title.strip() or "untitled source"
-        user = (
-            f"{_context_blob()}\n\n## New source: {source_label}\n{text.strip()}"
-        )
+        return await self._run_ingest(source_label, source_text=text.strip())
+
+    async def ingest_file(self, path: str, label: str = "") -> str:
+        """Ingest an uploaded file into the wiki.
+
+        ``.txt``/``.md``/``.docx`` are extracted to text; ``.pdf`` and images
+        are handed to Opus natively as attachment blocks (see ``uploads``).
+        """
+        if not self._ready():
+            return (
+                "The knowledge wiki needs an Anthropic credential (API key or "
+                "Claude Pro/Max token) before I can file this away."
+            )
+        src = await asyncio.to_thread(extract_source, path)
+        source_label = (label or src["label"]).strip() or "untitled source"
+        if src["attachments"]:
+            placeholder = (
+                "(the source is the attached file above — read it in full and "
+                "integrate its content into the wiki)"
+            )
+            return await self._run_ingest(
+                source_label, source_text=placeholder, attachments=src["attachments"]
+            )
+        return await self._run_ingest(source_label, source_text=(src["text"] or "").strip())
+
+    async def _run_ingest(
+        self,
+        source_label: str,
+        *,
+        source_text: str = "",
+        attachments: list[dict] | None = None,
+    ) -> str:
+        """Shared ingest path: ask Opus for page upserts, then apply them."""
+        await asyncio.to_thread(store.ensure_init)
+        user = f"{_context_blob()}\n\n## New source: {source_label}\n{source_text}"
         raw = await cowork.complete(
             system=_INGEST_SYSTEM,
             user=user,
             max_tokens=8000,
             json_schema=_INGEST_SCHEMA,
+            attachments=attachments,
         )
         data = json.loads(raw)
         pages = data.get("pages") or []
@@ -126,6 +167,24 @@ class WikiEngine:
         if not changed:
             return f"Read '{source_label}', but nothing new needed filing."
         return f"Filed '{source_label}' into {len(changed)} page(s): {', '.join(changed)}."
+
+    async def read_file(self, path: str, label: str = "") -> str:
+        """Read a file with Opus and return its content for the conversation,
+        without writing anything to the wiki (the 'temporary' path)."""
+        if not self._ready():
+            return (
+                "I need an Anthropic credential before I can read that file."
+            )
+        src = await asyncio.to_thread(extract_source, path)
+        source_label = (label or src["label"]).strip() or "the file"
+        if src["attachments"]:
+            user = f"## File: {source_label}\n(the file is attached above — read it)"
+            return await cowork.complete(
+                system=_READ_SYSTEM, user=user, max_tokens=4000,
+                attachments=src["attachments"],
+            )
+        user = f"## File: {source_label}\n{(src['text'] or '').strip()}"
+        return await cowork.complete(system=_READ_SYSTEM, user=user, max_tokens=4000)
 
     async def query(self, question: str) -> str:
         if not self._ready():

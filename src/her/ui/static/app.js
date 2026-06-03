@@ -17,6 +17,8 @@ const textForm = document.getElementById("text-form");
 const textInput = document.getElementById("text-input");
 const sendBtn = document.getElementById("send-btn");
 const cmdMenu = document.getElementById("cmd-menu");
+const attachBtn = document.getElementById("attach-btn");
+const fileInput = document.getElementById("file-input");
 
 const LANG_KEY = "her.language";
 function getSelectedLanguage() { return langSelect.value || localStorage.getItem(LANG_KEY) || "it"; }
@@ -46,6 +48,11 @@ const UI_STRINGS = {
     send: "invia", text_placeholder: "scrivi un messaggio o / per i comandi…",
     text_needs_session: "premi Start (o /start) per parlare con Samantha.",
     schedule_fired: "⏰ attività pianificata [{when}]: {prompt}",
+    attach_title: "Allega un file (pdf, md, txt, docx, jpg, png)",
+    file_uploading: "carico {name} …",
+    file_ask: "{name} caricato — vuoi conservarlo nella wiki o è temporaneo?",
+    file_keep: "Conserva nella wiki", file_discard: "Temporaneo (usa e elimina)",
+    file_filing: "archivio nella wiki …", file_reading: "leggo il file …",
   },
   en: {
     start: "Start", stop: "Stop",
@@ -70,6 +77,11 @@ const UI_STRINGS = {
     send: "send", text_placeholder: "type a message, or / for commands…",
     text_needs_session: "press Start (or /start) to talk to Samantha.",
     schedule_fired: "⏰ scheduled task [{when}]: {prompt}",
+    attach_title: "Attach a file (pdf, md, txt, docx, jpg, png)",
+    file_uploading: "uploading {name} …",
+    file_ask: "{name} uploaded — keep it in the wiki, or temporary?",
+    file_keep: "Keep in wiki", file_discard: "Temporary (use & delete)",
+    file_filing: "filing into the wiki …", file_reading: "reading the file …",
   },
   es: {
     start: "Iniciar", stop: "Parar",
@@ -94,6 +106,11 @@ const UI_STRINGS = {
     send: "enviar", text_placeholder: "escribe un mensaje o / para los comandos…",
     text_needs_session: "pulsa Start (o /start) para hablar con Samantha.",
     schedule_fired: "⏰ tarea programada [{when}]: {prompt}",
+    attach_title: "Adjuntar un archivo (pdf, md, txt, docx, jpg, png)",
+    file_uploading: "subiendo {name} …",
+    file_ask: "{name} subido — ¿lo conservo en la wiki o es temporal?",
+    file_keep: "Conservar en la wiki", file_discard: "Temporal (usar y eliminar)",
+    file_filing: "archivando en la wiki …", file_reading: "leyendo el archivo …",
   },
   fr: {
     start: "Démarrer", stop: "Arrêter",
@@ -118,6 +135,11 @@ const UI_STRINGS = {
     send: "envoyer", text_placeholder: "écris un message, ou / pour les commandes…",
     text_needs_session: "appuie sur Start (ou /start) pour parler à Samantha.",
     schedule_fired: "⏰ tâche programmée [{when}] : {prompt}",
+    attach_title: "Joindre un fichier (pdf, md, txt, docx, jpg, png)",
+    file_uploading: "import de {name} …",
+    file_ask: "{name} importé — le garder dans le wiki ou temporaire ?",
+    file_keep: "Garder dans le wiki", file_discard: "Temporaire (lire et supprimer)",
+    file_filing: "classement dans le wiki …", file_reading: "lecture du fichier …",
   },
   de: {
     start: "Start", stop: "Stopp",
@@ -142,6 +164,11 @@ const UI_STRINGS = {
     send: "senden", text_placeholder: "schreib eine Nachricht, oder / für Befehle…",
     text_needs_session: "drück Start (oder /start), um mit Samantha zu sprechen.",
     schedule_fired: "⏰ geplante Aufgabe [{when}]: {prompt}",
+    attach_title: "Datei anhängen (pdf, md, txt, docx, jpg, png)",
+    file_uploading: "lade {name} hoch …",
+    file_ask: "{name} hochgeladen — im Wiki behalten oder temporär?",
+    file_keep: "Im Wiki behalten", file_discard: "Temporär (lesen & löschen)",
+    file_filing: "lege im Wiki ab …", file_reading: "lese die Datei …",
   },
 };
 
@@ -158,6 +185,7 @@ function applyLanguage() {
   btn.textContent = running ? t("stop") : t("start");
   textInput.placeholder = t("text_placeholder");
   sendBtn.textContent = t("send");
+  attachBtn.title = t("attach_title");
   // The header meta line embeds a translated word ("ricordi"/"memories"/…),
   // so it has to be rebuilt too — otherwise it stays in whatever language was
   // active when config first loaded.
@@ -203,6 +231,16 @@ function fmtTokens(n) {
   return `${(n / 1_000_000).toFixed(2)}M`;
 }
 
+// A readable label for the Anthropic model id (e.g. "claude-opus-4-8" →
+// "Claude Opus"), shown next to its cost in the status bar.
+function prettyClaude(model) {
+  const m = (model || "").toLowerCase();
+  if (m.includes("opus")) return "Claude Opus";
+  if (m.includes("sonnet")) return "Claude Sonnet";
+  if (m.includes("haiku")) return "Claude Haiku";
+  return "Claude";
+}
+
 function renderA11yBadge(snap) {
   if (!a11yBadge) return;
   const on = !!(snap && snap.accessibility);
@@ -226,12 +264,16 @@ function renderStatusBar(snap) {
   const session = snap.active ? t("session_active") : t("disconnected");
   const audioLbl = t("audio");
   // When Cowork/wiki (Claude) has spent anything, show the split so the user
-  // sees both API costs.
+  // sees both API costs — labelled by the actual model behind each (the
+  // OpenAI realtime model and the Anthropic/Claude one), not the vendor names.
   let costHtml = `<span style="color:var(--ok)">$${cost}</span>`;
   if ((anth.cost_usd || 0) > 0) {
     const oa = (u.cost_usd || 0).toFixed(4);
     const cl = (anth.cost_usd || 0).toFixed(4);
-    costHtml += ` <span style="opacity:.65">(OpenAI $${oa} · Claude $${cl})</span>`;
+    const cfg = lastConfig || {};
+    const oaLbl = cfg.model || "OpenAI";
+    const clLbl = prettyClaude(cfg.anthropic_model);
+    costHtml += ` <span style="opacity:.65">(${oaLbl} $${oa} · ${clLbl} $${cl})</span>`;
   }
   statusLine.innerHTML =
     `${session} · ⏱ ${upt} · ` +
@@ -785,6 +827,62 @@ textForm.addEventListener("submit", async (e) => {
   } catch {
     errLine("send failed");
   }
+});
+
+// ── File upload → wiki ──────────────────────────────────────────────────
+// 📎 → pick a file → POST /api/upload (it's saved, not yet filed). Samantha
+// then asks (by voice if a session is live) whether to keep it in the wiki or
+// treat it as temporary; the two inline buttons resolve that either way.
+function refreshWikiCount() {
+  fetch("/api/config").then((r) => r.json()).then(renderHeaderConfig).catch(() => {});
+}
+
+function renderUploadActions(id, label) {
+  const row = document.createElement("div");
+  row.className = "upload-actions";
+  const keepBtn = document.createElement("button");
+  keepBtn.textContent = t("file_keep");
+  const tempBtn = document.createElement("button");
+  tempBtn.textContent = t("file_discard");
+  const resolve = async (action, busyKey) => {
+    keepBtn.disabled = tempBtn.disabled = true;
+    sysLine(t(busyKey));
+    const { ok, data } = await apiSend(`/api/upload/${id}/${action}`, "POST");
+    if (!ok) { errLine(data.error || "error"); return; }
+    if (data.message) appendLine("asst", t("who_asst"), data.message);
+    if (action === "keep") refreshWikiCount();
+  };
+  keepBtn.addEventListener("click", () => resolve("keep", "file_filing"));
+  tempBtn.addEventListener("click", () => resolve("discard", "file_reading"));
+  row.appendChild(keepBtn);
+  row.appendChild(tempBtn);
+  terminalEl.appendChild(row);
+  terminalEl.scrollTop = terminalEl.scrollHeight;
+}
+
+async function uploadFile(file) {
+  if (!file) return;
+  sysLine(t("file_uploading", { name: file.name }));
+  const body = new FormData();
+  body.append("file", file);
+  let res, data = {};
+  try {
+    res = await fetch("/api/upload", { method: "POST", body });
+    try { data = await res.json(); } catch {}
+  } catch {
+    errLine("upload failed");
+    return;
+  }
+  if (!res.ok || !data.ok) { errLine(data.error || "upload failed"); return; }
+  sysLine(t("file_ask", { name: data.label }));
+  renderUploadActions(data.id, data.label);
+}
+
+attachBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files && fileInput.files[0];
+  fileInput.value = "";
+  if (file) uploadFile(file);
 });
 
 let lastConfig = null;

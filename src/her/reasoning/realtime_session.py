@@ -44,6 +44,7 @@ from ..i18n import (
     screen_prefix,
     system_prompt,
     time_space_awareness,
+    upload_question_prefix,
 )
 from ..memory.character import CharacterProfile
 
@@ -345,6 +346,34 @@ class RealtimeSession:
                     {
                         "type": "input_text",
                         "text": f"{scheduled_task_prefix(self.language)}\n{prompt}",
+                    }
+                ],
+            },
+        })
+        await self._send_event({"type": "response.create"})
+
+    async def ask_about_upload(self, label: str) -> None:
+        """Have Samantha ask whether a just-uploaded file should be kept in the
+        wiki or treated as temporary. Injected as a system message + a response
+        so she voices the question, mirroring run_scheduled_task.
+        """
+        label = (label or "").strip()
+        if not self._ws or not label:
+            return
+        if self._active_response_id is not None:
+            try:
+                await self._send_event({"type": "response.cancel"})
+            except Exception:
+                pass
+        await self._send_event({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": f"{upload_question_prefix(self.language)} {label}",
                     }
                 ],
             },

@@ -97,6 +97,13 @@ OPTIONS = {
         "anthropic",
         "distro",
         "jiter",
+        # File uploads → wiki. Starlette imports python_multipart lazily for
+        # UploadFile/File; python-docx (`docx`, which needs `lxml`) is imported
+        # lazily in her.memory.wiki.uploads. None are seen by static analysis.
+        "python_multipart",
+        "multipart",
+        "docx",
+        "lxml",
         # anyio loads its backend modules with importlib.import_module at
         # request time (e.g. "anyio._backends._asyncio"), invisible to
         # py2app's static modulegraph — pull in the whole package.

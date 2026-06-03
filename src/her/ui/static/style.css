@@ -149,6 +149,21 @@ main {
   background: var(--accent); color: #1a0e2e; border-color: var(--accent);
 }
 .input-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Paperclip attach button: square, icon-sized, sits left of the text input. */
+.input-bar button.icon-btn {
+  padding: 6px 9px; font-size: 15px; line-height: 1;
+}
+/* Inline keep/discard actions Samantha offers after an upload. */
+.upload-actions { display: flex; gap: 8px; margin: 4px 0 4px 52px; }
+.upload-actions button {
+  padding: 4px 10px; border-radius: 6px; font-family: inherit; font-size: 12px;
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--border); cursor: pointer; transition: all 0.15s;
+}
+.upload-actions button:hover:not(:disabled) {
+  background: var(--accent); color: #1a0e2e; border-color: var(--accent);
+}
+.upload-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 footer {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

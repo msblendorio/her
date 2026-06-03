@@ -412,6 +412,21 @@ class Orchestrator:
         if self.realtime is not None:
             await self.realtime.inject_scene(caption)
 
+    async def ask_about_upload(self, label: str) -> None:
+        """Have Samantha ask, in the live session, whether a just-uploaded file
+        should be kept in the wiki or treated as temporary. No-op when no
+        session is up (the UI buttons still drive the decision).
+        """
+        if self.realtime is not None:
+            await self.realtime.ask_about_upload(label)
+
+    async def note_to_session(self, caption: str) -> None:
+        """Drop a short note into the live session as ambient context (e.g. the
+        content of a temporary file Opus just read). No-op without a session.
+        """
+        if self.realtime is not None:
+            await self.realtime.inject_scene(caption)
+
     async def set_accessibility(self, on: bool) -> None:
         """Turn accessibility mode on/off mid-session.
 

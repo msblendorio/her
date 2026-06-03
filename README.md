@@ -21,12 +21,12 @@ personal, interlinked **knowledge wiki** she maintains across sessions.*
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Voice & reasoning** | OpenAI Realtime API (`gpt-realtime-mini` by default, voice `shimmer`) — low-latency listening, speaking, and live reasoning                                                                                                                              |
 | **Cowork (Claude)**   | A second brain for deep work: delegate open-ended knowledge-work to **Claude** (`claude-opus-4-8`, the engine behind **Claude Cowork**) with `run_cowork_task`, and have her **author Agent Skills** (`SKILL.md`) into `~/.claude/skills/` that Cowork and Claude Code pick up. Enable with an Anthropic API key **or** your Claude Pro/Max subscription |
-| **Knowledge wiki**    | A persistent, interlinked markdown knowledge base Claude maintains (Karpathy's LLM-wiki pattern): *"save this to my wiki"* to ingest, *"what did I save about…"* to query, plus a `lint` consistency pass — all under `data/wiki/`                          |
+| **Knowledge wiki**    | A persistent, interlinked markdown knowledge base Claude maintains (Karpathy's LLM-wiki pattern): *"save this to my wiki"* to ingest, *"what did I save about…"* to query, plus a `lint` consistency pass — all under `data/wiki/`. You can also **📎 upload a file** (pdf, md, txt, docx, jpg, png) — **Claude Opus** reads it and files it into the wiki |
 | **Vision**            | Local Moondream2 captions the webcam every few seconds and injects the scene into the live session — the webcam feed itself is never shown in the UI (*"sees without showing"*)                                                                         |
 | **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                                      |
 | **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                                               |
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
-| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, **slash commands** (`/help`, `/schedule`, `/pulse`, …) with autocomplete, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
+| **UI**                | Single browser page with a text input bar for typing and speaking in parallel, a **📎 file-upload** button (read by Claude into the wiki), **slash commands** (`/help`, `/schedule`, `/pulse`, …) with autocomplete, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
 | **Time-based autonomy** | **Schedule** fires tasks at fixed times (standard 5-field cron), and **Pulse** is an ambient check-in where Samantha decides on her own whether to say something — both managed from the text bar with `/schedule` and `/pulse`, active only while a session is open |
 
 
@@ -80,7 +80,7 @@ The footer shows the **OpenAI and Claude costs side by side**.
 
 **No terminal, no Python, no setup.** Just download a `.dmg`, drag, and run.
 
-1. **Download** the latest `Her-0.5.0.dmg` from the
+1. **Download** the latest `Her-0.6.0.dmg` from the
    [Releases page](https://github.com/msblendorio/her/releases/latest).
 2. **Open** the DMG and drag `Her` onto `Applications`. Eject the disk image.
 3. **First launch:** right-click `Her.app` → **Open** (only this once —
@@ -169,7 +169,7 @@ clean checkout with the `[desktop]` extra installed:
 ```bash
 brew install create-dmg               # one-time
 pip install -e ".[desktop]"           # adds py2app
-./scripts/build-dmg.sh                # produces dist/Her-0.5.0.dmg
+./scripts/build-dmg.sh                # produces dist/Her-0.6.0.dmg
 ```
 
 Quick iteration:
@@ -177,7 +177,7 @@ Quick iteration:
 - `./scripts/build-dmg.sh --app-only` — rebuild just `dist/Her.app`, skip the DMG
 - `./scripts/build-dmg.sh --dmg-only` — rewrap the existing `.app` into a fresh DMG
 
-`dist/Her-0.5.0.dmg` is a build artifact and is gitignored — publish it
+`dist/Her-0.6.0.dmg` is a build artifact and is gitignored — publish it
 as a GitHub *release asset* (Releases → Draft a new release → attach the
 `.dmg`) rather than committing it to the repo.
 
@@ -260,6 +260,30 @@ to complete, `Esc` to dismiss. The bar works even before you press *Start*, so
 | `/start` · `/stop` | Start or stop the session |
 | `/schedule …` | Manage scheduled tasks — see below |
 | `/pulse …` | Manage the ambient check-in — see below |
+
+---
+
+## Uploading files to the wiki
+
+Next to the text bar there's a **📎** button. Pick a file — **PDF, Markdown,
+plain text, Word `.docx`, or an image (`.jpg` / `.png`)** — and it's handed to
+**Claude Opus** (her deep-work brain, not the OpenAI voice model). Opus reads
+PDFs and *sees* images natively; `.docx`/`.txt`/`.md` are read as text.
+
+The file isn't filed automatically. Once it's uploaded, Samantha **asks whether
+to keep it or treat it as temporary** (by voice when a session is open, and via
+two buttons in the terminal either way):
+
+- **Keep in wiki** — Opus integrates the content into the interlinked wiki
+  pages, exactly like `wiki_ingest`. The original file is archived under
+  `data/uploads/`.
+- **Temporary (use & delete)** — Opus reads it just for the current
+  conversation and gives you the gist; nothing is written to the wiki and the
+  original file is deleted.
+
+Uploads are capped at `UPLOAD_MAX_MB` (default 25 MB, below Anthropic's document
+limit) and require an Anthropic credential — the same one that powers
+[Cowork and the wiki](#two-brains-voice-and-deep-work).
 
 ---
 
@@ -405,6 +429,8 @@ Sensible defaults are in `.env.example`. The interesting knobs:
 | `WIKI_ENABLED`            | `true`              | Master switch for the knowledge wiki (`wiki_ingest` / `wiki_query` / `wiki_lint`)                                              |
 | `WIKI_PATH`               | `data/wiki`         | Where the wiki lives (`index.md` + `log.md` + `pages/`)                                                                        |
 | `WIKI_MAX_CONTEXT_PAGES`  | `12`                | Max existing wiki pages loaded into Claude's context per ingest/query                                                          |
+| `UPLOADS_PATH`            | `data/uploads`      | Where 📎-uploaded files kept for the wiki are archived                                                                          |
+| `UPLOAD_MAX_MB`           | `25`                | Max upload size in MB (kept below Anthropic's 32 MB document limit)                                                            |
 | `SCHEDULE_ENABLED`        | `true`              | Master switch for cron-driven scheduled tasks (`/schedule`)                                                                    |
 | `SCHEDULE_PATH`           | `data/schedule.json`| Where scheduled jobs are persisted                                                                                            |
 | `SCHEDULE_POLL_INTERVAL`  | `20`                | Seconds between schedule polls — keep under 60 so minute-granular cron never slips                                             |
@@ -432,8 +458,9 @@ on every new session.
 billed separately by Anthropic (`claude-opus-4-8`: ~$5 / 1M input, ~$25 / 1M
 output; switch `ANTHROPIC_MODEL` to `claude-sonnet-4-6` to roughly halve it). It
 only runs when you ask for deep work or wiki operations, so most sessions add
-nothing. The footer breaks the total down as `(OpenAI $… · Claude $…)` whenever
-Claude has been used, so you always see both meters.
+nothing. The footer breaks the total down by model as
+`(gpt-realtime-mini $… · Claude Opus $…)` whenever Claude has been used, so you
+always see both meters.
 
 ---
 

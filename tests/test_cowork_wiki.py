@@ -12,6 +12,7 @@ from her.core.usage import UsageTracker
 from her.cowork.skills_store import CoworkSkillStore, slugify
 from her.memory.wiki.engine import WikiEngine
 from her.memory.wiki.store import WikiStore
+from her.memory.wiki.uploads import PendingUploadStore, extract_source, is_allowed
 
 
 # ---------- CoworkSkillStore ---------------------------------------------
@@ -117,6 +118,73 @@ def test_wiki_engine_no_credential(monkeypatch):
     assert "credential" in out.lower()
     out = asyncio.run(eng.ingest("some text", "src"))
     assert "credential" in out.lower()
+    out = asyncio.run(eng.ingest_file("/tmp/whatever.txt", "src"))
+    assert "credential" in out.lower()
+    out = asyncio.run(eng.read_file("/tmp/whatever.txt", "src"))
+    assert "credential" in out.lower()
+
+
+# ---------- Upload extractor ----------------------------------------------
+
+
+def test_extract_source_text_and_markdown(tmp_path):
+    p = tmp_path / "note.txt"
+    p.write_text("hello world", encoding="utf-8")
+    r = extract_source(p)
+    assert r["text"] == "hello world" and r["attachments"] is None
+    assert r["label"] == "note.txt"
+
+
+def test_extract_source_docx(tmp_path):
+    import docx
+
+    doc = docx.Document()
+    doc.add_paragraph("Para one")
+    table = doc.add_table(rows=1, cols=2)
+    table.rows[0].cells[0].text = "A"
+    table.rows[0].cells[1].text = "B"
+    p = tmp_path / "report.docx"
+    doc.save(str(p))
+    r = extract_source(p)
+    assert "Para one" in r["text"] and "A | B" in r["text"]
+    assert r["attachments"] is None
+
+
+def test_extract_source_pdf_and_image_become_attachments(tmp_path):
+    pdf = tmp_path / "f.pdf"
+    pdf.write_bytes(b"%PDF-1.4 minimal")
+    r = extract_source(pdf)
+    assert r["text"] is None
+    assert r["attachments"][0]["type"] == "document"
+    assert r["attachments"][0]["source"]["media_type"] == "application/pdf"
+
+    from PIL import Image
+
+    img = tmp_path / "pic.png"
+    Image.new("RGB", (4, 4), (255, 0, 0)).save(str(img))
+    r = extract_source(img)
+    assert r["attachments"][0]["type"] == "image"
+    assert r["attachments"][0]["source"]["media_type"] == "image/png"
+
+
+def test_extract_source_rejects_unsupported(tmp_path):
+    assert is_allowed("a.pdf") and not is_allowed("a.zip")
+    p = tmp_path / "a.zip"
+    p.write_bytes(b"PK")
+    try:
+        extract_source(p)
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert ".zip" in str(e)
+
+
+def test_pending_upload_store_add_get_pop(tmp_path):
+    store = PendingUploadStore()
+    item = store.add(tmp_path / "x.txt", "x.txt")
+    assert store.get(item.id) is item
+    assert store.pop(item.id) is item
+    assert store.get(item.id) is None
+    assert store.pop(item.id) is None
 
 
 # ---------- Anthropic cost accounting -------------------------------------
