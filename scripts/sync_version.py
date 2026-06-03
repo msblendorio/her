@@ -3,9 +3,12 @@
 
 version.yaml is the single source of truth. Code (her.__version__), the
 packaging metadata (pyproject + hatchling), the DMG build script, and the
-py2app plist all derive the version at import/build time. README.md, however,
-is static prose — this script rewrites the version tokens in it so the docs
-never drift.
+py2app plist all derive the version at import/build time.
+
+README.md is intentionally version-agnostic — it never names a release number
+(download links point at /releases/latest, build paths use a `<version>`
+placeholder) so it doesn't need bumping. ``TARGETS`` is therefore empty; the
+mechanism is kept for any future static file that does embed a literal version.
 
 Usage:
     python scripts/sync_version.py          # rewrite in place
@@ -30,10 +33,9 @@ def read_version() -> str:
 
 # (path, regex with one capture group for the version, replacement template).
 # The template uses {v} for the new version. The regex must match the whole
-# token so the replacement is unambiguous.
-TARGETS: list[tuple[str, str, str]] = [
-    ("README.md", r"Her-\d+\.\d+\.\d+\.dmg", "Her-{v}.dmg"),
-]
+# token so the replacement is unambiguous. Empty by design — see the module
+# docstring (README.md is version-agnostic).
+TARGETS: list[tuple[str, str, str]] = []
 
 
 def main() -> int:

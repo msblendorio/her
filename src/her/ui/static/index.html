@@ -37,8 +37,11 @@
     <form id="text-form" autocomplete="off">
       <span class="prompt">›</span>
       <button id="attach-btn" type="button" class="icon-btn" title="Allega un file">📎</button>
+      <!-- Extensions only: in WKWebView (the packaged app) adding explicit image
+           MIME types here narrows the native file panel to images, leaving the
+           other formats unselectable. The server validates the type regardless. -->
       <input id="file-input" type="file" hidden
-             accept=".pdf,.md,.txt,.docx,.jpg,.jpeg,.png,image/jpeg,image/png" />
+             accept=".pdf,.md,.txt,.docx,.jpg,.jpeg,.png" />
       <input id="text-input" type="text" autocomplete="off" spellcheck="false"
              placeholder="…" />
       <button id="send-btn" type="submit">send</button>

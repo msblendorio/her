@@ -137,6 +137,11 @@ main {
   outline: none; transition: border-color 0.15s;
 }
 .input-bar input:focus { border-color: var(--accent); }
+/* Highlight the text input while a file is dragged over the bar. */
+.input-bar input.drag-over {
+  border-color: var(--accent); border-style: dashed;
+  background: var(--panel);
+}
 .input-bar input:disabled { opacity: 0.5; cursor: not-allowed; }
 .input-bar input::placeholder { color: var(--muted); }
 .input-bar button {

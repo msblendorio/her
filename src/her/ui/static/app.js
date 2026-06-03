@@ -885,6 +885,29 @@ fileInput.addEventListener("change", () => {
   if (file) uploadFile(file);
 });
 
+// Drag & drop a file anywhere on the input bar → same flow as the 📎 button,
+// with the text input highlighted as the drop target. Window-level handlers
+// swallow stray drops so a misfire never navigates the app away from the file.
+const inputBarEl = document.querySelector(".input-bar");
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+if (inputBarEl) {
+  inputBarEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    textInput.classList.add("drag-over");
+  });
+  inputBarEl.addEventListener("dragleave", (e) => {
+    if (!inputBarEl.contains(e.relatedTarget)) textInput.classList.remove("drag-over");
+  });
+  inputBarEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    textInput.classList.remove("drag-over");
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) uploadFile(file);
+  });
+}
+
 let lastConfig = null;
 function renderHeaderConfig(c) {
   lastConfig = c;
