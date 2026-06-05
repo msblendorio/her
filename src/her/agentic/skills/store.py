@@ -98,9 +98,40 @@ class SkillStore:
             "summary": summary,
             "created_at": _now_iso(),
             "event_count": len(rec.events),
+            "origin": "demo",
         }
         self._save_index(idx)
         log.info("skills: saved '%s' (%d events)", slug, len(rec.events))
+        return slug
+
+    def save_forged(
+        self,
+        name: str,
+        description: str,
+        script: str,
+        summary: str,
+    ) -> str:
+        """Persist a skill authored from a spoken description (Skill Forge).
+
+        Same on-disk shape as :meth:`save_recording` minus the trace/shots a
+        demonstration would produce: just ``script.applescript`` plus an
+        index entry tagged ``origin="forge"``. Returns the canonical slug.
+        """
+        slug = slugify(name)
+        out_dir = self.base_dir / slug
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "script.applescript").write_text(script, encoding="utf-8")
+
+        idx = self._load_index()
+        idx[slug] = {
+            "name": name,
+            "description": description,
+            "summary": summary,
+            "created_at": _now_iso(),
+            "origin": "forge",
+        }
+        self._save_index(idx)
+        log.info("skills: forged '%s'", slug)
         return slug
 
     def delete(self, slug: str) -> bool:

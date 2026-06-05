@@ -13,17 +13,13 @@ as data URLs.
 from __future__ import annotations
 
 import base64
-import json
 import logging
 
-import httpx
-
 from ...config import settings
+from ...reasoning.text_backend import chat_json
 from .recorder import SkillEvent, SkillRecording
 
 log = logging.getLogger(__name__)
-
-CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 _SYSTEM_PROMPT = (
     "You convert recorded macOS UI interactions into a single AppleScript "
@@ -58,39 +54,27 @@ async def compile_to_applescript(rec: SkillRecording) -> tuple[str, str] | None:
     """Return ``(script, summary)`` for the recording, or ``None`` on
     failure (no API key, network error, malformed reply, empty trace).
     """
-    if not settings.openai_api_key:
-        log.warning("skills: OPENAI_API_KEY missing, cannot compile")
-        return None
     if not rec.events:
         log.info("skills: empty trace, nothing to compile")
         return None
 
-    payload = {
-        "model": settings.skills_compiler_model,
-        "messages": _build_messages(rec),
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"},
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.openai_api_key}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(CHAT_URL, json=payload, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-        raw = data["choices"][0]["message"]["content"]
-        parsed = json.loads(raw)
-        script = (parsed.get("script") or "").strip()
-        summary = (parsed.get("summary") or "").strip()
-        if not script:
-            log.warning("skills: compiler returned an empty script")
-            return None
-        return script, summary
-    except Exception:
-        log.exception("skills: compile_to_applescript failed")
+    # Vision-capable call: in local mode it must hit a multimodal Ollama model
+    # (local_llm_vision_model) since the prompt carries screenshots.
+    parsed = await chat_json(
+        _build_messages(rec),
+        cloud_model=settings.skills_compiler_model,
+        local_model=settings.local_llm_vision_model,
+        temperature=0.2,
+        timeout=120.0,
+    )
+    if not isinstance(parsed, dict):
         return None
+    script = (parsed.get("script") or "").strip()
+    summary = (parsed.get("summary") or "").strip()
+    if not script:
+        log.warning("skills: compiler returned an empty script")
+        return None
+    return script, summary
 
 
 def _build_messages(rec: SkillRecording) -> list[dict]:

@@ -25,6 +25,7 @@ personal, interlinked **knowledge wiki** she maintains across sessions.*
 | **Vision**            | Local Moondream2 captions the webcam every few seconds and injects the scene into the live session — the webcam feed itself is never shown in the UI (*"sees without showing"*)                                                                         |
 | **Memory**            | Two coordinated tracks at session end: a cheap text model summarizes the spoken transcript, and a second pass summarizes what Samantha saw through the webcam. The next session starts with both as recall context                                      |
 | **Agentic**           | She can open apps, open URLs, take screenshots, run macOS Shortcuts, set the volume, list running apps, search the web, look at the screen, read and send email, and manage your calendar                                                               |
+| **Teachable skills**  | Teach her a macOS action once and she keeps it forever: **demonstrate** it (she records your clicks and a vision model compiles them) or just **describe it in words** — **Skill Forge** 🔨 turns the description into a runnable script, no code. Saved skills are invoked by name and managed with `/forge`                                                       |
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
 | **UI**                | Single browser page with a text input bar for typing and speaking in parallel, a **📎 file-upload** button (read by Claude into the wiki), **slash commands** (`/help`, `/schedule`, `/pulse`, …) with autocomplete, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
 | **Time-based autonomy** | **Schedule** fires tasks at fixed times (standard 5-field cron), and **Pulse** is an ambient check-in where Samantha decides on her own whether to say something — both managed from the text bar with `/schedule` and `/pulse`, active only while a session is open |
@@ -73,6 +74,46 @@ The footer shows the **OpenAI and Claude costs side by side**.
 > Anthropic Console, while the **Pro/Max token** draws on your existing chat
 > subscription (short-lived — re-run `ant auth print-credentials` when it
 > expires). The API key is the most reliable path.
+
+---
+
+## Run it free, fully on-device (no API keys)
+
+Don't want to pay OpenAI or Anthropic? Both brains have a **free, local
+alternative** that runs entirely on an Apple-Silicon Mac with 16 GB RAM. The
+defaults keep the hosted setup — you opt in per brain via `.env`, so you can run
+the voice locally while still using Claude for deep work, or go fully offline.
+
+| Hosted (default) | Local (free) | What runs it |
+| --- | --- | --- |
+| `gpt-realtime-mini` (voice) | `VOICE_BACKEND=local` | **faster-whisper** (STT) → **Ollama** LLM → **Kokoro** (TTS), with webrtcvad turn detection |
+| `claude-opus-4-8` + `gpt-4o-mini` (Cowork, wiki, memory, character, skills) | `LLM_BACKEND=local` | the same **Ollama** server (`qwen3:8b` by default) |
+
+**Setup (one time):**
+
+```bash
+# 1. Local STT/TTS/VAD libraries (espeak bundled — no brew needed; the
+#    ~340 MB Kokoro voice model downloads automatically on first use)
+pip install -r requirements-local.txt
+
+# 2. The local LLM brain — install Ollama, then pull the models
+#    https://ollama.com
+ollama pull qwen3:8b
+ollama pull qwen2.5vl:7b        # only if you record skills in local mode
+
+# 3. Flip the switches in .env
+#    VOICE_BACKEND=local
+#    LLM_BACKEND=local
+```
+
+Tune the models and turn-taking with the `LOCAL_*` keys in `.env.example`
+(`LOCAL_STT_MODEL`, `LOCAL_LLM_MODEL`, `LOCAL_TTS_VOICE`, `LOCAL_VAD_SILENCE_MS`,
+…). In local mode the footer cost stays at **$0** — nothing leaves your Mac.
+
+> Trade-offs: a 7–8B local model is less capable than Opus/`gpt-realtime`, and
+> latency depends on your machine. The local voice uses classic turn-taking
+> (speak, pause, hear the reply) rather than the hosted model's full-duplex
+> streaming. It is, however, completely free and private.
 
 ---
 
@@ -260,6 +301,7 @@ to complete, `Esc` to dismiss. The bar works even before you press *Start*, so
 | `/start` · `/stop` | Start or stop the session |
 | `/schedule …` | Manage scheduled tasks — see below |
 | `/pulse …` | Manage the ambient check-in — see below |
+| `/forge …` | Teach / list skills by describing them (Skill Forge) — see below |
 
 ---
 
@@ -284,6 +326,39 @@ two buttons in the terminal either way):
 Uploads are capped at `UPLOAD_MAX_MB` (default 25 MB, below Anthropic's document
 limit) and require an Anthropic credential — the same one that powers
 [Cowork and the wiki](#two-brains-voice-and-deep-work).
+
+---
+
+## Teaching her new skills
+
+Samantha can learn a macOS action and replay it on command, forever after.
+There are **two ways to teach her** — both land in the same store
+(`data/skills/`), are invoked by name (*"run my focus skill"*), and are listed
+with `/forge`:
+
+- **Demonstrate it** (show, don't tell). Say *"impara questa azione come
+  'focus'"*, perform the clicks and keystrokes yourself, then say *"fatto"*.
+  She records the trace, a vision model compiles it into an AppleScript, and
+  saves it. Needs Accessibility + Screen Recording permission.
+- **Describe it — Skill Forge** 🔨. Just *tell* her what the skill should do,
+  no demonstration and no code: *"voglio insegnarti una cosa: quando dico
+  'focus', chiudi Slack e attiva Non Disturbare"*. She turns the description
+  into a runnable script and **shows you a preview first** — what it will do,
+  plus any steps she couldn't automate — and saves it **only once you
+  confirm**. Correct her in plain words (*"use Apple Music, not Spotify"*) and
+  she re-forges it.
+
+From the text bar:
+
+```text
+/forge                                   # list skills (🔨 forged · 🎥 demonstrated)
+/forge focus | chiudi Slack e attiva Non Disturbare
+/forge save   ·   /forge cancel          # confirm or drop the preview
+/forge rm <slug>                         # delete a skill
+```
+
+Forging uses a cheap text model (`SKILLS_FORGE_MODEL`, default `gpt-4o-mini`),
+so it runs on your OpenAI key — or fully on-device in `LLM_BACKEND=local` mode.
 
 ---
 

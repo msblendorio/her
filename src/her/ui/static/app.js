@@ -570,6 +570,7 @@ const CMD_TEXT = {
   start: "start the session", stop: "stop the session",
   schedule: "tasks scheduled at fixed times (cron)",
   pulse: "periodic presence: on/off or interval",
+  forge: "teach a new skill by describing it (no demo)",
 };
 function cmdDesc(name) {
   return CMD_TEXT[name.slice(1)] || name.slice(1);
@@ -706,6 +707,72 @@ async function cmdPulse(args) {
   renderPulse(data);
 }
 
+// A skill forged in the terminal but not yet saved: {name, description,
+// script, summary}. The preview/confirm split mirrors the conversational
+// forge_session so nothing lands on disk without an explicit "save".
+let pendingForge = null;
+
+function fmtSkill(s) {
+  const icon = s.origin === "forge" ? "🔨" : "🎥";
+  return `  ${icon} ${s.slug}  —  ${s.summary || s.description || s.name || ""}`;
+}
+
+async function cmdForge(args, raw) {
+  const sub = (args[0] || "").toLowerCase();
+
+  if (!sub || sub === "list" || sub === "ls") {
+    const d = await apiGet("/api/forge");
+    const skills = d.skills || [];
+    sysLine(`skills (${skills.length}):`);
+    for (const s of skills) sysLine(fmtSkill(s));
+    if (!skills.length) sysLine("  —  /forge <nome> | <descrizione>");
+    return;
+  }
+
+  if (sub === "save" || sub === "ok") {
+    if (!pendingForge) { errLine("niente da salvare — prima /forge <nome> | <descrizione>"); return; }
+    const { ok, data } = await apiSend("/api/forge/confirm", "POST", pendingForge);
+    if (!ok) { errLine(data.error || "errore"); return; }
+    sysLine(`ok: forgiata '${data.slug}'`);
+    pendingForge = null;
+    return;
+  }
+
+  if (sub === "cancel" || sub === "annulla") {
+    if (!pendingForge) { sysLine("niente in sospeso"); return; }
+    sysLine(`annullata '${pendingForge.name}'`);
+    pendingForge = null;
+    return;
+  }
+
+  if (sub === "rm" || sub === "del" || sub === "remove") {
+    const slug = args[1];
+    if (!slug) { errLine("uso: /forge rm <slug>"); return; }
+    const { data } = await apiSend(`/api/forge/${slug}`, "DELETE");
+    sysLine(data.ok ? `ok: '${slug}' rimossa` : `?: '${slug}'`);
+    return;
+  }
+
+  // Otherwise: forge from "<name> | <description>".
+  const m = raw.match(/^\/forge\s+([\s\S]+)$/i);
+  if (!m || !m[1].includes("|")) {
+    errLine("uso: /forge <nome> | <descrizione>   (es. focus | chiudi Slack e attiva Non Disturbare)");
+    return;
+  }
+  const [namePart, ...rest] = m[1].split("|");
+  const name = namePart.trim();
+  const description = rest.join("|").trim();
+  if (!name || !description) { errLine("uso: /forge <nome> | <descrizione>"); return; }
+
+  sysLine(`forgiatura '${name}'…`);
+  const { ok, data } = await apiSend("/api/forge", "POST", { name, description });
+  if (!ok) { errLine(data.error || "non sono riuscita a forgiarla"); return; }
+  sysLine(`preview: ${data.summary || "(nessun riassunto)"}`);
+  for (const w of (data.warnings || [])) sysLine(`  ⚠ ${w}`);
+  pendingForge = { name, description, script: data.script, summary: data.summary };
+  sysLine("  →  /forge save  per salvare,  /forge cancel  per annullare");
+}
+
 const COMMANDS = [
   { name: "/help", run: cmdHelp },
   { name: "/clear", run: cmdClear },
@@ -718,6 +785,7 @@ const COMMANDS = [
   { name: "/stop", run: cmdStop },
   { name: "/schedule", args: "[list | add <cron> | <text> | rm <id> | on|off <id>]", run: cmdSchedule },
   { name: "/pulse", args: "[on | off | <seconds>]", run: cmdPulse },
+  { name: "/forge", args: "[<name> | <description> | save | cancel | rm <slug>]", run: cmdForge },
 ];
 
 async function handleCommand(raw) {

@@ -60,3 +60,7 @@ pywebview>=5.0 ; sys_platform == "darwin"
 
 # Optional: V-JEPA real integration (uncomment when wiring up world_model.py)
 # timm>=1.0
+
+# Optional: free, on-device backends (VOICE_BACKEND=local / LLM_BACKEND=local).
+# Kept in a separate file so the default install stays lean. Install with:
+#   pip install -r requirements-local.txt

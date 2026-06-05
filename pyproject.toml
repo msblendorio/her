@@ -51,6 +51,15 @@ dependencies = [
 dev = ["ruff>=0.7", "pytest>=8.3", "pytest-asyncio>=0.24"]
 # Build-time tools for producing the Her.app + DMG via desktop/setup_app.py.
 desktop = ["py2app>=0.28"]
+# Free, on-device backends (VOICE_BACKEND=local / LLM_BACKEND=local). The LLM
+# itself runs in a separate Ollama server; these are the local STT/TTS/VAD libs.
+# kokoro-onnx bundles espeak-ng (no system install) and supports Python 3.13.
+local = [
+    "faster-whisper>=1.0",   # speech-to-text (CTranslate2)
+    "kokoro-onnx>=0.4",      # text-to-speech (Kokoro 82M, 24 kHz, ONNX runtime)
+    "webrtcvad-wheels>=2.0", # turn detection (prebuilt wheels)
+    "soundfile>=0.12",       # audio I/O
+]
 
 [project.scripts]
 her = "her.main:main"

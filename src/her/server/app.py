@@ -10,6 +10,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
+from ..agentic.skills.compiler_text import forge_to_applescript
+from ..agentic.skills.runtime import store as skill_store
 from ..agentic.tools import TOOLS
 from ..config import settings
 from ..core.event_bus import bus
@@ -57,11 +59,16 @@ def create_app() -> FastAPI:
                 mem_count = MemoryStore(settings.memory_path).count()
             except Exception:
                 pass
+        # Reflect the active backend so the header isn't misleading in local mode.
+        local_voice = settings.voice_backend.strip().lower() == "local"
+        local_llm = settings.llm_backend.strip().lower() == "local"
         return {
             "version": __version__,
-            "model": settings.openai_realtime_model,
-            "anthropic_model": settings.anthropic_model,
-            "voice": settings.openai_voice,
+            "model": f"local:{settings.local_llm_model}" if local_voice
+            else settings.openai_realtime_model,
+            "anthropic_model": f"local:{settings.local_llm_model}" if local_llm
+            else settings.anthropic_model,
+            "voice": settings.local_tts_voice if local_voice else settings.openai_voice,
             "language": settings.assistant_language,
             "vision_enabled": settings.vision_enabled,
             "vision_interval_s": settings.vision_caption_interval,
@@ -189,6 +196,74 @@ def create_app() -> FastAPI:
         except Exception:
             pass
         return await orchestrator.set_pulse(enabled=enabled, interval_s=interval_s)
+
+    # ── Skill Forge (author a skill from a spoken description) ────────────
+    @app.get("/api/forge")
+    async def list_forge() -> dict:
+        return {"skills": skill_store.list_skills()}
+
+    @app.post("/api/forge")
+    async def preview_forge(request: Request) -> JSONResponse:
+        """Forge a skill from a description and return a PREVIEW. Does NOT
+        save — the client must POST the returned script to /api/forge/confirm.
+        """
+        name = description = ""
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                name = str(body.get("name") or "").strip()
+                description = str(body.get("description") or "").strip()
+        except Exception:
+            pass
+        if not name or not description:
+            return JSONResponse(
+                {"ok": False, "error": "name and description are required"},
+                status_code=400,
+            )
+        result = await forge_to_applescript(name, description)
+        if result is None:
+            return JSONResponse(
+                {"ok": False, "error": "could not forge a script from that description"},
+                status_code=422,
+            )
+        return JSONResponse({
+            "ok": True,
+            "name": name,
+            "description": description,
+            "summary": result.summary,
+            "warnings": result.warnings,
+            "script": result.script,
+        })
+
+    @app.post("/api/forge/confirm")
+    async def confirm_forge_endpoint(request: Request) -> JSONResponse:
+        """Persist a previewed skill. Saves exactly the script the user saw."""
+        name = description = script = summary = ""
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                name = str(body.get("name") or "").strip()
+                description = str(body.get("description") or "").strip()
+                script = str(body.get("script") or "").strip()
+                summary = str(body.get("summary") or "").strip()
+        except Exception:
+            pass
+        if not name or not script:
+            return JSONResponse(
+                {"ok": False, "error": "name and script are required"},
+                status_code=400,
+            )
+        slug = skill_store.save_forged(name, description, script, summary)
+        # Re-push the prompt so Samantha can invoke the new skill at once.
+        bus.publish("skills.saved", {"slug": slug})
+        return JSONResponse({"ok": True, "slug": slug})
+
+    @app.delete("/api/forge/{slug}")
+    async def delete_forge(slug: str) -> dict:
+        existed = skill_store.delete(slug)
+        if existed:
+            bus.publish("skills.saved", {"slug": slug})
+        return {"ok": existed}
 
     @app.post("/api/session/start")
     async def start_session(request: Request) -> dict:

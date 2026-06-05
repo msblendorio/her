@@ -27,6 +27,7 @@ from ..memory.visual_collector import VisualCollector
 from ..perception.vision_scene import run_vision_loop
 from ..perception.world_model import build_world_model
 from ..reasoning.empathy import EmpathyTracker
+from ..reasoning.local_session import LocalRealtimeSession
 from ..reasoning.realtime_session import RealtimeSession
 from .event_bus import bus
 from .preferences import PreferencesStore
@@ -36,10 +37,14 @@ from .usage import usage
 
 log = logging.getLogger(__name__)
 
+# Either voice backend satisfies the same interface; the orchestrator treats
+# them interchangeably (selected by settings.voice_backend).
+VoiceSession = RealtimeSession | LocalRealtimeSession
+
 
 class Orchestrator:
     def __init__(self) -> None:
-        self.realtime: RealtimeSession | None = None
+        self.realtime: VoiceSession | None = None
         self._vision_task: asyncio.Task | None = None
         self._screen_task: asyncio.Task | None = None
         self._skills_task: asyncio.Task | None = None
@@ -86,8 +91,17 @@ class Orchestrator:
                 log.info("session already active, ignoring start()")
                 return
             self._session_language = resolve_lang(language or settings.assistant_language)
-            log.info("starting session (lang=%s)", self._session_language)
-            usage.reset(model=settings.openai_realtime_model)
+            local_voice = settings.voice_backend.strip().lower() == "local"
+            log.info(
+                "starting session (lang=%s, voice=%s)",
+                self._session_language, "local" if local_voice else "openai",
+            )
+            # Local voice is free, so the status bar shows the local model name
+            # and the cost stays at $0 (LocalRealtimeSession never records usage).
+            usage.reset(
+                model=f"local:{settings.local_llm_model}" if local_voice
+                else settings.openai_realtime_model
+            )
 
             # Build the optional recall block from previous sessions.
             extra = ""
@@ -135,7 +149,8 @@ class Orchestrator:
                 log.exception("skills: could not load index, starting empty")
                 learned_skills = []
 
-            self.realtime = RealtimeSession(
+            session_cls = LocalRealtimeSession if local_voice else RealtimeSession
+            self.realtime = session_cls(
                 language=self._session_language,
                 extra_instructions=extra,
                 accessibility=start_with_a11y,

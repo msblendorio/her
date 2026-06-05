@@ -13,18 +13,14 @@ which assembles a single `MemoryEntry` per session.
 """
 from __future__ import annotations
 
-import json
 import logging
-
-import httpx
 
 from ..config import settings
 from ..i18n import summarizer_prompt, visual_summarizer_prompt
+from ..reasoning.text_backend import chat_json
 from .store import MemoryEntry, now_iso
 
 log = logging.getLogger(__name__)
-
-CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 # Per-language transcript labels (the speaker tags shown to the summarizer).
 _USER_LABEL = {"it": "Utente", "en": "User", "es": "Usuario", "fr": "Utilisateur", "de": "Nutzer"}
@@ -55,36 +51,13 @@ def _build_visual_messages(
 
 
 async def _call_chat_json(messages: list[dict]) -> dict | None:
-    """POST to Chat Completions with response_format=json_object.
+    """Run the summarizer call via the active text backend (OpenAI or Ollama).
 
     Returns the parsed dict on success, or None on any failure (no api key,
     network error, malformed JSON, etc.). The summarizer is best-effort:
     a failure here just means this session contributes no memory entry.
     """
-    if not settings.openai_api_key:
-        log.warning("memory: no OPENAI_API_KEY, skipping summary")
-        return None
-
-    payload = {
-        "model": settings.memory_summarizer_model,
-        "messages": messages,
-        "temperature": 0.3,
-        "response_format": {"type": "json_object"},
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.openai_api_key}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(CHAT_URL, json=payload, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-        raw = data["choices"][0]["message"]["content"]
-        return json.loads(raw)
-    except Exception:
-        log.exception("memory: chat call failed")
-        return None
+    return await chat_json(messages, cloud_model=settings.memory_summarizer_model)
 
 
 async def summarize(

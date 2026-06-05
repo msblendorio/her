@@ -22,14 +22,11 @@ import tempfile
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-import httpx
-
 from ..config import settings
+from ..reasoning.text_backend import chat_json
 from .store import MemoryEntry, now_iso
 
 log = logging.getLogger(__name__)
-
-CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 # Allowed values for the discrete fields. Kept narrow so the addendum
 # template stays predictable.
@@ -153,9 +150,6 @@ async def refine_character(
     Returns the new profile on success, or None on any failure — the caller
     should fall back to keeping the previous one.
     """
-    if not settings.openai_api_key:
-        log.warning("character: no OPENAI_API_KEY, skipping refine")
-        return None
     if len(turns) < 2:
         return None
 
@@ -174,30 +168,14 @@ async def refine_character(
         f"Transcript of the session that just ended:\n{_transcript_block(turns)}"
     )
 
-    payload = {
-        "model": settings.memory_summarizer_model,
-        "messages": [
+    parsed = await chat_json(
+        [
             {"role": "system", "content": _REFINE_PROMPT},
             {"role": "user", "content": user_msg},
         ],
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"},
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.openai_api_key}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(CHAT_URL, json=payload, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-        raw = data["choices"][0]["message"]["content"]
-        parsed = json.loads(raw)
-    except Exception:
-        log.exception("character: refine chat call failed")
-        return None
-
+        cloud_model=settings.memory_summarizer_model,
+        temperature=0.2,
+    )
     if not isinstance(parsed, dict):
         return None
 

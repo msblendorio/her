@@ -31,22 +31,16 @@ from ..config import settings
 from ..core.event_bus import bus
 from ..core.state import state
 from ..core.usage import usage
-from ..cowork.client import client as cowork_client
 from ..i18n import (
-    accessibility_addendum,
-    cowork_addendum,
-    empathy_addendum,
-    learned_skills_addendum,
     pulse_prompt,
     resolve as resolve_lang,
     scene_prefix,
     scheduled_task_prefix,
     screen_prefix,
-    system_prompt,
-    time_space_awareness,
     upload_question_prefix,
 )
 from ..memory.character import CharacterProfile
+from .instructions import build_instructions
 
 log = logging.getLogger(__name__)
 
@@ -180,29 +174,14 @@ class RealtimeSession:
         await self._send_event({"type": "response.create"})
 
     def _build_instructions(self) -> str:
-        parts = [system_prompt(self.language)]
-        # Time/space awareness is re-evaluated on each call so the date and
-        # local time stay fresh whenever the session is re-pushed (e.g. on
-        # accessibility/empathy updates).
-        parts.append(time_space_awareness(self.language))
-        if self._extra_instructions:
-            parts.append(self._extra_instructions)
-        if self._accessibility:
-            parts.append(accessibility_addendum(self.language))
-        # Empathy addendum is always appended: even without a profile (first
-        # session) the mood directive alone is useful, and on subsequent
-        # sessions the profile block kicks in too.
-        parts.append(empathy_addendum(self._character, self._empathy_mood, self.language))
-        # Learned skills (if any): emit the index so the model knows what
-        # it can run_skill() — nothing appended on a fresh install.
-        skills_block = learned_skills_addendum(self._learned_skills, self.language)
-        if skills_block:
-            parts.append(skills_block)
-        # Cowork (if enabled and an Anthropic credential is present): nudge
-        # Samantha to delegate heavy knowledge-work and author skills.
-        if settings.cowork_enabled and cowork_client.is_configured():
-            parts.append(cowork_addendum(self.language))
-        return "\n\n".join(parts)
+        return build_instructions(
+            language=self.language,
+            extra_instructions=self._extra_instructions,
+            accessibility=self._accessibility,
+            character=self._character,
+            empathy_mood=self._empathy_mood,
+            learned_skills=self._learned_skills,
+        )
 
     async def set_learned_skills(self, skills: list[dict]) -> None:
         """Refresh the in-prompt skill index and re-push instructions.

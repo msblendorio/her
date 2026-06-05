@@ -12,6 +12,59 @@ class Settings(BaseSettings):
     openai_voice: str = "shimmer"
     assistant_language: str = "it"
 
+    # ── Local / free backends (opt-in; defaults keep OpenAI + Anthropic) ──
+    # Two independent switches let you go fully on-device, model by model:
+    #
+    #   voice_backend = "openai" (hosted Realtime, default) | "local"
+    #       "local" replaces the OpenAI Realtime speech-to-speech model with an
+    #       on-device pipeline: faster-whisper (STT) → Ollama LLM → Kokoro (TTS),
+    #       with webrtcvad for turn detection. No OPENAI_API_KEY required.
+    #
+    #   llm_backend = "cloud" (OpenAI + Anthropic, default) | "local"
+    #       "local" routes every text/brain call — Cowork, the knowledge wiki,
+    #       the memory summarizer, the character profiler and the skill
+    #       compiler — to the same Ollama endpoint instead of Claude / gpt-4o.
+    #
+    # Both are free and run on an Apple-Silicon Mac with 16 GB RAM. They share
+    # one Ollama server (OpenAI-compatible API). See local_session.py.
+    voice_backend: str = "openai"
+    llm_backend: str = "cloud"
+
+    # Ollama OpenAI-compatible endpoint + models (used when a backend is
+    # "local"). Pull the models first: ``ollama pull qwen3:8b`` etc.
+    local_llm_base_url: str = "http://localhost:11434/v1"
+    local_llm_model: str = "qwen3:8b"
+    # Vision-capable local model, used only by the skill compiler (it reads
+    # screenshots). Leave as-is if you don't record skills in local mode.
+    local_llm_vision_model: str = "qwen2.5vl:7b"
+
+    # Local speech-to-text (faster-whisper / CTranslate2). Model sizes:
+    # tiny/base/small/medium/large-v3. "small" balances speed and accuracy on
+    # an M1; "int8" compute keeps the memory footprint low. Leave
+    # local_stt_language blank to auto-detect, or pin it (e.g. "it") for speed.
+    local_stt_model: str = "small"
+    local_stt_compute: str = "int8"
+    local_stt_device: str = "cpu"
+    local_stt_language: str = ""
+
+    # Local text-to-speech (Kokoro, ONNX runtime). The voice id is paired with
+    # an espeak language ("it", "en-us", "es", "fr-fr", "pt-br"); leave
+    # local_tts_lang blank to derive it from the session language. espeak-ng is
+    # bundled (via espeakng-loader), so no system install is needed. The model
+    # files are downloaded once to local_tts_model_path / local_tts_voices_path
+    # if missing (~340 MB total).
+    local_tts_voice: str = "af_heart"
+    local_tts_lang: str = ""
+    local_tts_speed: float = 1.0
+    local_tts_model_path: str = "data/kokoro/kokoro-v1.0.onnx"
+    local_tts_voices_path: str = "data/kokoro/voices-v1.0.bin"
+
+    # Turn detection (webrtcvad). Aggressiveness 0-3 (higher = more
+    # aggressive about classifying frames as non-speech); a turn ends after
+    # local_vad_silence_ms of continuous silence following speech.
+    local_vad_aggressiveness: int = 2
+    local_vad_silence_ms: int = 700
+
     vision_enabled: bool = True
     vision_caption_interval: float = 4.0
     vision_model_id: str = "vikhyatk/moondream2"
@@ -64,6 +117,12 @@ class Settings(BaseSettings):
     # ``skills_path``; the model used for compilation must be vision-capable.
     skills_path: str = "data/skills"
     skills_compiler_model: str = "gpt-4o-mini"
+    # Skill Forge: Samantha can also forge a skill from a *spoken description*
+    # (no demonstration) — the user explains the action and a chat model turns
+    # it into the same AppleScript artefact, saved into the same store. This
+    # model only ever sees text (no screenshots), so it need not be
+    # vision-capable and can be cheaper/local.
+    skills_forge_model: str = "gpt-4o-mini"
 
     # ── Cowork / Anthropic ────────────────────────────────────────────────
     # Samantha can delegate open-ended knowledge-work tasks to Claude (the

@@ -16,10 +16,21 @@ import logging
 from ...core.event_bus import bus
 from ..registry import tool
 from .compiler import compile_to_applescript
+from .compiler_text import forge_to_applescript
 from .recorder import slugify
-from .runtime import recorder, store
+from .runtime import forge_session, recorder, store
 
 log = logging.getLogger(__name__)
+
+
+def _format_preview(name: str, summary: str, warnings: list[str]) -> str:
+    """Human-readable proposal shown to the user before a forge is saved."""
+    lines = [f"proposed skill '{name}': {summary or '(no summary)'}"]
+    if warnings:
+        lines.append("heads-up:")
+        lines.extend(f"- {w}" for w in warnings)
+    lines.append("say 'save' to keep it, or tell me what to change.")
+    return "\n".join(lines)
 
 
 @tool(safe=False)
@@ -115,6 +126,73 @@ async def run_skill(name: str) -> str:
 @tool()
 async def list_skills() -> list[dict]:
     """List every skill Samantha has been taught. Each entry has slug,
-    name, description, summary, created_at, and event_count.
+    name, description, summary, created_at, origin, and (for demonstrated
+    skills) event_count.
     """
     return await asyncio.to_thread(store.list_skills)
+
+
+@tool(safe=False)
+async def forge_skill(name: str, description: str) -> str:
+    """Forge a new skill from the user's spoken DESCRIPTION — no
+    demonstration. Use this when the user TELLS you what they want you to
+    learn instead of showing you: "impara a fare X", "quando dico Y fai Z",
+    "voglio insegnarti una cosa: ...", "learn to ...". (When they instead
+    want to *demonstrate* by clicking, use start_learning_skill.)
+
+    This does NOT save anything yet: it returns a PREVIEW of what the skill
+    will do plus any caveats. ALWAYS read the preview back to the user and
+    let them confirm. They save it by triggering confirm_forge (e.g. they
+    say "save"/"salva"/"yes") or change it by calling forge_skill again with
+    a refined description; discard_forge throws the proposal away.
+
+    Args:
+        name: Short, descriptive name used later to invoke the skill via
+            run_skill(). Italian/English/etc. all fine.
+        description: What the skill should do, in plain language.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise RuntimeError("skill name is required")
+    result = await forge_to_applescript(name, description)
+    if result is None:
+        forge_session.clear()
+        return f"could not forge '{name}' from that description — try explaining it differently"
+    forge_session.set(name, description, result)
+    return _format_preview(name, result.summary, result.warnings)
+
+
+@tool(safe=False)
+async def confirm_forge() -> str:
+    """Save the skill currently proposed by forge_skill. Call this when the
+    user confirms the preview ("save", "salva", "yes", "ok keep it"). Fails
+    gracefully if there is nothing pending.
+    """
+    pending = forge_session.pending
+    if pending is None:
+        return "nothing to save — forge a skill first"
+    slug = await asyncio.to_thread(
+        store.save_forged,
+        pending.name,
+        pending.description,
+        pending.result.script,
+        pending.result.summary,
+    )
+    forge_session.clear()
+    # Re-push the system prompt so the new skill is immediately invocable,
+    # exactly as stop_learning_skill does for demonstrated skills.
+    bus.publish("skills.saved", {"slug": slug})
+    return f"forged skill '{slug}': {pending.result.summary or pending.name}"
+
+
+@tool(safe=False)
+async def discard_forge() -> str:
+    """Throw away the skill currently proposed by forge_skill without saving
+    it. Call this when the user declines the preview ("no", "annulla",
+    "scarta", "forget it").
+    """
+    if forge_session.pending is None:
+        return "nothing to discard"
+    name = forge_session.pending.name
+    forge_session.clear()
+    return f"discarded the proposed skill '{name}'"

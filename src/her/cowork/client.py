@@ -23,6 +23,7 @@ from ..config import settings
 from ..core.event_bus import bus
 from ..core.state import state
 from ..core.usage import usage
+from ..reasoning import text_backend
 
 log = logging.getLogger(__name__)
 
@@ -57,11 +58,16 @@ class CoworkClient:
     def is_configured(self) -> bool:
         if not settings.cowork_enabled:
             return False
+        # Local backend needs no credential — Cowork runs on the Ollama server.
+        if text_backend.is_local():
+            return True
         api_key, auth_token = _resolve_credentials()
         return bool(api_key or auth_token)
 
     def credential_kind(self) -> str:
-        """``"api_key"``, ``"subscription"``, or ``"none"``."""
+        """``"local"``, ``"api_key"``, ``"subscription"``, or ``"none"``."""
+        if text_backend.is_local():
+            return "local"
         api_key, auth_token = _resolve_credentials()
         if api_key:
             return "api_key"
@@ -125,6 +131,14 @@ class CoworkClient:
         for a PDF or an ``image`` block) prepended to the user turn so Opus
         reads/sees the file directly — used by the wiki when ingesting uploads.
         """
+        # Local backend (Ollama): no thinking / caching / native attachments —
+        # just a plain OpenAI-compatible chat call. Attachments (PDFs/images)
+        # are dropped with a warning since the default local model is text-only.
+        if text_backend.is_local():
+            return await self._complete_local(
+                system=system, user=user, json_schema=json_schema, attachments=attachments
+            )
+
         client = self._get_client()
         model = settings.anthropic_model
 
@@ -171,6 +185,37 @@ class CoworkClient:
             final = await stream.get_final_message()
         self._account(final, model)
         return _first_text(final)
+
+    async def _complete_local(
+        self,
+        *,
+        system: str,
+        user: str,
+        json_schema: dict | None,
+        attachments: list[dict] | None,
+    ) -> str:
+        """Run ``complete()`` against the local Ollama backend.
+
+        Returns the assistant text. For ``json_schema`` requests we ask for a
+        JSON object and return it re-serialized (callers ``json.loads`` it),
+        mirroring the Anthropic structured-output contract. Cost accounting is
+        skipped — local inference is free.
+        """
+        if attachments:
+            log.warning(
+                "cowork(local): %d attachment(s) dropped — the local model is "
+                "text-only; document/image ingestion needs the cloud backend",
+                len(attachments),
+            )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        if json_schema is not None:
+            parsed = await text_backend.chat_json(messages, cloud_model="", timeout=120.0)
+            return json.dumps(parsed or {}, ensure_ascii=False)
+        text = await text_backend.chat_text(messages, cloud_model="", timeout=120.0)
+        return text or ""
 
     def _account(self, message: Any, model: str) -> None:
         """Record the call's Anthropic token usage and push a status refresh so
