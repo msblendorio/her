@@ -14,6 +14,7 @@ from ..agentic.skills.compiler_text import forge_to_applescript
 from ..agentic.skills.runtime import store as skill_store
 from ..agentic.tools import TOOLS
 from ..config import settings
+from ..core import env_settings
 from ..core.event_bus import bus
 from ..core.orchestrator import orchestrator
 from ..core.state import state
@@ -24,6 +25,24 @@ from .ws import register_ws_routes
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "ui" / "static"
+
+
+def _read_changelog() -> str:
+    """Locate and read ``CHANGELOG.md``.
+
+    It lives at the repo root when running from source, and is shipped into the
+    bundle as a resource by ``desktop/setup_app.py`` (landing under
+    ``Contents/Resources``). Mirror ``her._version_from_yaml``: walk every
+    ancestor of this file plus the cwd and take the first one found.
+    """
+    here = Path(__file__).resolve()
+    for base in (*here.parents, Path.cwd()):
+        candidate = base / "CHANGELOG.md"
+        try:
+            return candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return ""
 
 
 def create_app() -> FastAPI:
@@ -76,6 +95,39 @@ def create_app() -> FastAPI:
             "memory_enabled": settings.memory_enabled,
             "memory_count": mem_count,
         }
+
+    # ── Settings (editable .env via the ⚙️ panel) ────────────────────────
+    @app.get("/api/settings")
+    async def get_settings() -> dict:
+        sections = env_settings.current_schema()
+        # Offer the models actually pulled in Ollama as autocomplete on the
+        # local-model fields. Best-effort: if Ollama is down the fields stay
+        # plain text (no suggestions), the panel opens regardless.
+        models = await env_settings.list_local_models()
+        env_settings.with_ollama_suggestions(sections, models)
+        return {"sections": sections, "local_models": models}
+
+    @app.post("/api/settings")
+    async def post_settings(request: Request) -> JSONResponse:
+        values: dict = {}
+        try:
+            body = await request.json()
+            if isinstance(body, dict) and isinstance(body.get("values"), dict):
+                values = body["values"]
+        except Exception:
+            pass
+        if not values:
+            return JSONResponse({"ok": False, "error": "no values"}, status_code=400)
+        try:
+            result = env_settings.save(values)
+        except Exception as e:
+            log.exception("settings save failed")
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        return JSONResponse(result)
+
+    @app.get("/api/changelog")
+    async def get_changelog() -> dict:
+        return {"markdown": _read_changelog()}
 
     @app.get("/api/memory")
     async def get_memory() -> dict:

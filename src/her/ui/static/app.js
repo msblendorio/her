@@ -19,6 +19,13 @@ const sendBtn = document.getElementById("send-btn");
 const cmdMenu = document.getElementById("cmd-menu");
 const attachBtn = document.getElementById("attach-btn");
 const fileInput = document.getElementById("file-input");
+const settingsBtn = document.getElementById("settings-btn");
+const settingsOverlay = document.getElementById("settings-overlay");
+const settingsForm = document.getElementById("settings-form");
+const changelogBody = document.getElementById("changelog-body");
+const settingsMsg = document.getElementById("settings-msg");
+const settingsFoot = document.getElementById("settings-foot");
+const settingsSaveBtn = document.getElementById("settings-save");
 
 const LANG_KEY = "her.language";
 function getSelectedLanguage() { return langSelect.value || localStorage.getItem(LANG_KEY) || "it"; }
@@ -172,6 +179,50 @@ const UI_STRINGS = {
   },
 };
 
+// Preferences-panel chrome, merged into UI_STRINGS so `t()` resolves them too.
+// Field labels/help come from the server schema and stay in English (they
+// mirror the env-var names — same convention as the slash commands).
+const SETTINGS_STRINGS = {
+  it: {
+    settings_title: "Preferenze", tab_prefs: "Preferenze", tab_changelog: "Changelog",
+    btn_save: "Salva", btn_cancel: "Annulla", settings_loading: "carico…",
+    saved_ok: "salvato nella .env locale", saved_restart: "salvato — riavvia l'app per applicare tutto",
+    saved_err: "salvataggio non riuscito",
+    sec_modes: "Modalità", sec_keys: "Chiavi API", sec_models: "Modelli", sec_variables: "Variabili",
+  },
+  en: {
+    settings_title: "Preferences", tab_prefs: "Preferences", tab_changelog: "Changelog",
+    btn_save: "Save", btn_cancel: "Cancel", settings_loading: "loading…",
+    saved_ok: "saved to the local .env", saved_restart: "saved — restart the app to apply everything",
+    saved_err: "save failed",
+    sec_modes: "Modes", sec_keys: "API keys", sec_models: "Models", sec_variables: "Variables",
+  },
+  es: {
+    settings_title: "Preferencias", tab_prefs: "Preferencias", tab_changelog: "Changelog",
+    btn_save: "Guardar", btn_cancel: "Cancelar", settings_loading: "cargando…",
+    saved_ok: "guardado en el .env local", saved_restart: "guardado — reinicia la app para aplicar todo",
+    saved_err: "error al guardar",
+    sec_modes: "Modos", sec_keys: "Claves API", sec_models: "Modelos", sec_variables: "Variables",
+  },
+  fr: {
+    settings_title: "Préférences", tab_prefs: "Préférences", tab_changelog: "Changelog",
+    btn_save: "Enregistrer", btn_cancel: "Annuler", settings_loading: "chargement…",
+    saved_ok: "enregistré dans le .env local", saved_restart: "enregistré — redémarre l'app pour tout appliquer",
+    saved_err: "échec de l'enregistrement",
+    sec_modes: "Modes", sec_keys: "Clés API", sec_models: "Modèles", sec_variables: "Variables",
+  },
+  de: {
+    settings_title: "Einstellungen", tab_prefs: "Einstellungen", tab_changelog: "Changelog",
+    btn_save: "Speichern", btn_cancel: "Abbrechen", settings_loading: "lade…",
+    saved_ok: "in der lokalen .env gespeichert", saved_restart: "gespeichert — App neu starten, um alles anzuwenden",
+    saved_err: "Speichern fehlgeschlagen",
+    sec_modes: "Modi", sec_keys: "API-Schlüssel", sec_models: "Modelle", sec_variables: "Variablen",
+  },
+};
+for (const [lang, s] of Object.entries(SETTINGS_STRINGS)) {
+  Object.assign(UI_STRINGS[lang], s);
+}
+
 function t(key, params = {}) {
   const dict = UI_STRINGS[getSelectedLanguage()] || UI_STRINGS.it;
   let s = dict[key] || UI_STRINGS.it[key] || key;
@@ -190,6 +241,8 @@ function applyLanguage() {
   // so it has to be rebuilt too — otherwise it stays in whatever language was
   // active when config first loaded.
   if (lastConfig) renderHeaderConfig(lastConfig);
+  // Keep the preferences-panel chrome in sync if it's already on screen.
+  applySettingsLanguage();
 }
 
 // The input field is always usable so slash commands (/help, /start, …) work
@@ -975,6 +1028,194 @@ if (inputBarEl) {
     if (file) uploadFile(file);
   });
 }
+
+// ── Preferences panel (⚙️) ───────────────────────────────────────────────
+// Reads the editable schema from /api/settings, renders a grouped form, and
+// POSTs changes back — the server writes them to the local .env and applies
+// them in place for the next session. A second tab shows the changelog.
+const SEC_TITLE = {
+  modes: "sec_modes", keys: "sec_keys", models: "sec_models", variables: "sec_variables",
+};
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+// Apply the active language to the panel's static chrome (title, tabs, buttons).
+function applySettingsLanguage() {
+  const map = {
+    "settings-title": "settings_title",
+    "settings-save": "btn_save",
+    "settings-cancel": "btn_cancel",
+  };
+  for (const [id, key] of Object.entries(map)) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(key);
+  }
+  document.querySelectorAll("#settings-tabs .tab").forEach((b) => {
+    b.textContent = b.dataset.tab === "changelog" ? t("tab_changelog") : t("tab_prefs");
+  });
+}
+
+function fieldControl(f) {
+  const id = `set-${f.key}`;
+  if (f.type === "bool") {
+    const checked = f.value ? "checked" : "";
+    return `<div class="set-field bool">
+      <input type="checkbox" id="${id}" data-key="${f.key}" data-type="bool" ${checked}>
+      <span class="bool-text"><label for="${id}">${escapeHtml(f.label)}</label>
+      ${f.help ? `<span class="help">${escapeHtml(f.help)}</span>` : ""}</span>
+    </div>`;
+  }
+  const sugg = (f.suggestions || []);
+  let control;
+  if (f.type === "select" || sugg.length) {
+    // A real dropdown. Suggestion-backed fields (the local model pickers) list
+    // ONLY the models actually pulled in Ollama. Fixed-option selects keep the
+    // current value as an option too, so a custom value is never silently lost.
+    const opts = sugg.length
+      ? [...sugg]
+      : [...new Set([...(f.options || []), f.value].filter((v) => v !== "" && v != null))];
+    const optHtml = opts.map((o) =>
+      `<option value="${escapeHtml(o)}"${o === f.value ? " selected" : ""}>${escapeHtml(o)}</option>`
+    ).join("");
+    control = `<select id="${id}" data-key="${f.key}" data-type="${f.type === "select" ? "select" : "text"}">${optHtml}</select>`;
+  } else {
+    const inputType = f.type === "password" ? "password" : (f.type === "number" ? "number" : "text");
+    const step = f.type === "number" ? ' step="any"' : "";
+    const ac = f.type === "password" ? ' autocomplete="off" spellcheck="false"' : "";
+    control = `<input type="${inputType}"${step}${ac} id="${id}" data-key="${f.key}" data-type="${f.type}" value="${escapeHtml(f.value)}">`;
+  }
+  return `<div class="set-field">
+    <label for="${id}">${escapeHtml(f.label)}</label>
+    ${control}
+    ${f.help ? `<span class="help">${escapeHtml(f.help)}</span>` : ""}
+  </div>`;
+}
+
+function renderSettingsForm(sections) {
+  settingsForm.innerHTML = sections.map((sec) => {
+    const title = t(SEC_TITLE[sec.id] || sec.id) || sec.title;
+    const fields = sec.fields.map(fieldControl).join("");
+    return `<div class="set-section"><h3>${escapeHtml(title)}</h3>${fields}</div>`;
+  }).join("");
+}
+
+function collectSettingsValues() {
+  const values = {};
+  settingsForm.querySelectorAll("[data-key]").forEach((el) => {
+    const key = el.dataset.key;
+    values[key] = el.dataset.type === "bool" ? el.checked : el.value;
+  });
+  return values;
+}
+
+function setSettingsMsg(text, cls) {
+  settingsMsg.textContent = text || "";
+  settingsMsg.className = "settings-msg" + (cls ? " " + cls : "");
+}
+
+function switchTab(tab) {
+  document.querySelectorAll("#settings-tabs .tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".modal-body .tab-panel").forEach((p) =>
+    p.hidden = p.dataset.panel !== tab);
+  // The save/cancel footer only makes sense on the editable Preferences tab.
+  settingsFoot.hidden = tab !== "prefs";
+  if (tab === "changelog") loadChangelog();
+}
+
+// Minimal markdown → HTML for the changelog (headings, lists, bold, code,
+// links). Deliberately tiny — the file is ours, not arbitrary input.
+function renderMarkdown(md) {
+  const lines = md.split("\n");
+  let html = "";
+  let inList = false;
+  const inline = (s) => escapeHtml(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    let m;
+    if ((m = line.match(/^###\s+(.*)/))) { closeList(); html += `<h3>${inline(m[1])}</h3>`; }
+    else if ((m = line.match(/^##\s+(.*)/))) { closeList(); html += `<h2>${inline(m[1])}</h2>`; }
+    else if ((m = line.match(/^#\s+(.*)/))) { closeList(); html += `<h1>${inline(m[1])}</h1>`; }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
+      if (!inList) { html += "<ul>"; inList = true; }
+      html += `<li>${inline(m[1])}</li>`;
+    } else if (line.trim() === "") { closeList(); }
+    else { closeList(); html += `<p>${inline(line)}</p>`; }
+  }
+  closeList();
+  return html;
+}
+
+let changelogLoaded = false;
+async function loadChangelog() {
+  if (changelogLoaded) return;
+  try {
+    const d = await fetch("/api/changelog").then((r) => r.json());
+    changelogBody.innerHTML = d.markdown
+      ? renderMarkdown(d.markdown)
+      : `<p>${escapeHtml(t("settings_loading"))}</p>`;
+    changelogLoaded = true;
+  } catch {
+    changelogBody.innerHTML = `<p>${escapeHtml(t("saved_err"))}</p>`;
+  }
+}
+
+async function openSettings() {
+  applySettingsLanguage();
+  setSettingsMsg("");
+  switchTab("prefs");
+  settingsForm.innerHTML = `<p class="help">${escapeHtml(t("settings_loading"))}</p>`;
+  settingsOverlay.hidden = false;
+  try {
+    const d = await fetch("/api/settings").then((r) => r.json());
+    renderSettingsForm(d.sections || []);
+  } catch {
+    settingsForm.innerHTML = `<p class="help">${escapeHtml(t("saved_err"))}</p>`;
+  }
+}
+
+function closeSettings() { settingsOverlay.hidden = true; }
+
+async function saveSettings() {
+  settingsSaveBtn.disabled = true;
+  setSettingsMsg(t("settings_loading"));
+  try {
+    const { ok, data } = await apiSend("/api/settings", "POST", { values: collectSettingsValues() });
+    if (!ok || !data.ok) { setSettingsMsg(data.error || t("saved_err"), "err"); return; }
+    // Reflect any model/voice/vision change in the header meta line at once.
+    fetch("/api/config").then((r) => r.json()).then(renderHeaderConfig).catch(() => {});
+    // On success: no confirmation message — just close the panel.
+    closeSettings();
+  } catch {
+    setSettingsMsg(t("saved_err"), "err");
+  } finally {
+    settingsSaveBtn.disabled = false;
+  }
+}
+
+settingsBtn.addEventListener("click", openSettings);
+document.getElementById("settings-close").addEventListener("click", closeSettings);
+document.getElementById("settings-cancel").addEventListener("click", closeSettings);
+settingsSaveBtn.addEventListener("click", saveSettings);
+document.getElementById("settings-tabs").addEventListener("click", (e) => {
+  const tab = e.target.closest(".tab");
+  if (tab) switchTab(tab.dataset.tab);
+});
+// Click the dim backdrop (but not the modal) to dismiss; Esc also closes.
+settingsOverlay.addEventListener("mousedown", (e) => {
+  if (e.target === settingsOverlay) closeSettings();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !settingsOverlay.hidden) closeSettings();
+});
 
 let lastConfig = null;
 function renderHeaderConfig(c) {

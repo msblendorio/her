@@ -7,4 +7,4 @@
 #   - scripts/build-dmg.sh  DMG filename (at build time)
 # README.md is intentionally version-agnostic (links point at /releases/latest),
 # so it needs no sync.
-version: 0.7.0
+version: 0.8.0

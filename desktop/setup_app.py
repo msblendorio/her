@@ -154,6 +154,10 @@ OPTIONS = {
         # bundle (it lands in Contents/Resources, an ancestor of the her
         # package dir, where _version_from_yaml walks up to find it).
         str(ROOT / "version.yaml"),
+        # Ship CHANGELOG.md the same way so the ⚙️ Preferences panel can show
+        # release notes inside the packaged app (server/app._read_changelog
+        # walks ancestor dirs to find it).
+        str(ROOT / "CHANGELOG.md"),
     ],
     # py2app strips bytecode by default which breaks some pkg_resources
     # lookups — keep .py files.

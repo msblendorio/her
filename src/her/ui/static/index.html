@@ -24,9 +24,36 @@
         <span class="ind" data-key="speaking">speaking</span>
       </div>
       <select id="lang-select" title="Lingua di Samantha (applicata alla prossima sessione)"></select>
+      <button id="settings-btn" class="icon-btn" type="button" title="Preferenze" aria-label="Preferenze">⚙</button>
       <button id="toggle-btn">Start</button>
     </div>
   </header>
+
+  <!-- Preferences overlay: edit modes/models/variables/API keys (saved to the
+       local .env) and read the changelog. Hidden until the gear is clicked. -->
+  <div id="settings-overlay" class="overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header class="modal-head">
+        <h2 id="settings-title">Preferenze</h2>
+        <button id="settings-close" class="icon-btn" type="button" aria-label="Chiudi">✕</button>
+      </header>
+      <nav class="modal-tabs" id="settings-tabs">
+        <button class="tab active" data-tab="prefs" type="button">Preferenze</button>
+        <button class="tab" data-tab="changelog" type="button">Changelog</button>
+      </nav>
+      <div class="modal-body">
+        <form id="settings-form" class="tab-panel" data-panel="prefs"></form>
+        <div class="tab-panel changelog" data-panel="changelog" hidden id="changelog-body"></div>
+      </div>
+      <footer class="modal-foot" id="settings-foot">
+        <span id="settings-msg" class="settings-msg"></span>
+        <div class="modal-foot-actions">
+          <button id="settings-cancel" type="button" class="btn-ghost">Annulla</button>
+          <button id="settings-save" type="button" class="btn-primary">Salva</button>
+        </div>
+      </footer>
+    </div>
+  </div>
 
   <main>
     <section class="terminal" id="terminal" aria-live="polite"></section>
