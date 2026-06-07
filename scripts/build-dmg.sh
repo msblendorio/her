@@ -5,7 +5,7 @@
 #   brew install create-dmg
 #   python3.13 -m venv .venv
 #   source .venv/bin/activate
-#   pip install -e ".[desktop]"
+#   pip install -e ".[desktop,ast]"   # ast = bundle AST retrieval (optional)
 #
 # Usage:
 #   ./scripts/build-dmg.sh                # build everything

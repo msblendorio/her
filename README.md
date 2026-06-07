@@ -211,9 +211,13 @@ clean checkout with the `[desktop]` extra installed:
 
 ```bash
 brew install create-dmg               # one-time
-pip install -e ".[desktop]"           # adds py2app
+pip install -e ".[desktop,ast]"       # py2app + AST retrieval embedder
 ./scripts/build-dmg.sh                # produces dist/Her-<version>.dmg
 ```
+
+> The `ast` extra adds the few-shot retrieval embedder so it ships in the app.
+> It's optional at build time: build with just `.[desktop]` and the app still
+> works — AST retrieval simply degrades to off (the Style Card keeps working).
 
 Quick iteration:
 

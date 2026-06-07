@@ -4,8 +4,9 @@
   *how you talk* and mirror it. Phase 0 captures raw turns locally (secrets
   redacted before they touch disk, retention + one-command wipe); Phase 1
   distills a **Style Card** (length, register, emoji, languages, recurring
-  expressions) injected into both brains, with optional local few-shot retrieval
-  (`multilingual-e5-small`, the `ast` extra). Off by default and never records
+  expressions) injected into both brains, plus local few-shot retrieval
+  (`multilingual-e5-small`) — bundled in the desktop app so it works without a
+  terminal. Off by default and never records
   silently: a 🧠 footer badge shows the state and toggles the master opt-in, and
   `/ast` drives status / mode / consolidate / insights / forget. The deeper
   on-device-LoRA phases (training, teacher/student router, personal eval) are

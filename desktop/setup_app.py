@@ -1,6 +1,8 @@
 """py2app build script for Her.app.
 
-Usage (from repo root, inside an active venv with `pip install -e .[desktop]`):
+Usage (from repo root, inside an active venv with
+`pip install -e .[desktop,ast]` — the `ast` extra is optional and only adds the
+AST few-shot retrieval embedder to the bundle):
 
     python desktop/setup_app.py py2app
 
@@ -34,6 +36,25 @@ def _read_version() -> str:
 
 
 VERSION = _read_version()
+
+
+def _ast_retrieval_packages() -> list[str]:
+    """Packages for AST few-shot retrieval, bundled only when the optional
+    ``ast`` extra is installed in the build env (``pip install -e .[ast]``).
+
+    The embedder is imported lazily in ``her.ast.retrieval``, so py2app's static
+    analyzer never sees it — list it and its non-torch/transformers deps
+    explicitly. The ~118 MB e5 model downloads at runtime to the HF cache (like
+    Moondream), so it is not bundled here. When the deps are absent we return []
+    so the build still succeeds and retrieval simply degrades to off at runtime,
+    exactly as in a lean source install.
+    """
+    try:
+        import sentence_transformers  # noqa: F401
+    except Exception:
+        return []
+    return ["sentence_transformers", "sklearn", "scipy", "joblib", "threadpoolctl"]
+
 
 APP = [str(ROOT / "desktop" / "launcher.py")]
 ICON = str(ROOT / "desktop" / "icon" / "her.icns")
@@ -135,7 +156,7 @@ OPTIONS = {
         "cffi",             # soundfile's FFI layer
         "huggingface_hub",  # faster-whisper model download at runtime
         "tqdm",
-    ],
+    ] + _ast_retrieval_packages(),
     "includes": [
         "her.main",
         "her.server.app",
