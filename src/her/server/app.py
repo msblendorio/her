@@ -13,6 +13,7 @@ from .. import __version__
 from ..agentic.skills.compiler_text import forge_to_applescript
 from ..agentic.skills.runtime import store as skill_store
 from ..agentic.tools import TOOLS
+from ..ast import ast_manager
 from ..config import settings
 from ..core import env_settings
 from ..core.event_bus import bus
@@ -248,6 +249,46 @@ def create_app() -> FastAPI:
         except Exception:
             pass
         return await orchestrator.set_pulse(enabled=enabled, interval_s=interval_s)
+
+    # ── AST — Auto Self-Training (capture + Style Card + retrieval) ───────
+    @app.get("/api/ast")
+    async def get_ast() -> dict:
+        return ast_manager.insights()
+
+    @app.post("/api/ast")
+    async def set_ast(request: Request) -> JSONResponse:
+        """Drive AST: toggle master/capture, set mode, or run an action
+        (consolidate | train | forget). Returns the updated insights payload."""
+        body: dict = {}
+        try:
+            raw = await request.json()
+            if isinstance(raw, dict):
+                body = raw
+        except Exception:
+            pass
+
+        if "enabled" in body and body["enabled"] is not None:
+            ast_manager.set_enabled(bool(body["enabled"]))
+        if "capture" in body and body["capture"] is not None:
+            ast_manager.set_capture(bool(body["capture"]))
+        if body.get("mode"):
+            ast_manager.set_mode(str(body["mode"]))
+
+        action = str(body.get("action") or "").lower()
+        if action == "consolidate":
+            result = await ast_manager.consolidate_now()
+            return JSONResponse({"action": "consolidate", "result": result,
+                                 "insights": ast_manager.insights()})
+        if action == "train":
+            result = await ast_manager.train_now()
+            return JSONResponse({"action": "train", "result": result,
+                                 "insights": ast_manager.insights()})
+        if action == "forget":
+            result = ast_manager.forget(str(body.get("target") or "all"))
+            return JSONResponse({"action": "forget", "result": result,
+                                 "insights": ast_manager.insights()})
+
+        return JSONResponse(ast_manager.insights())
 
     # ── Skill Forge (author a skill from a spoken description) ────────────
     @app.get("/api/forge")

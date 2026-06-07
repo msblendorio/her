@@ -100,10 +100,10 @@ select#lang-select:disabled { opacity: 0.6; cursor: not-allowed; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 18px; border-bottom: 1px solid var(--border);
 }
-.modal-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.modal-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .modal-head .icon-btn {
   background: none; border: none; color: var(--muted); cursor: pointer;
-  font-size: 15px; padding: 4px 8px; border-radius: 6px;
+  font-size: 13px; padding: 4px 8px; border-radius: 6px;
 }
 .modal-head .icon-btn:hover { color: var(--fg); background: var(--panel-2); }
 .modal-tabs {
@@ -112,7 +112,7 @@ select#lang-select:disabled { opacity: 0.6; cursor: not-allowed; }
 .modal-tabs .tab {
   padding: 6px 12px; border: none; border-bottom: 2px solid transparent;
   background: none; color: var(--muted); cursor: pointer;
-  font-family: inherit; font-size: 12px;
+  font-family: inherit; font-size: 11px;
 }
 .modal-tabs .tab:hover { color: var(--fg); }
 .modal-tabs .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -122,12 +122,12 @@ select#lang-select:disabled { opacity: 0.6; cursor: not-allowed; }
 /* Settings form */
 .set-section { margin-bottom: 20px; }
 .set-section > h3 {
-  margin: 0 0 10px; font-size: 12px; font-weight: 600;
+  margin: 0 0 10px; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent-2);
 }
 .set-field { margin-bottom: 12px; }
-.set-field > label { display: block; font-size: 13px; margin-bottom: 3px; }
-.set-field .help { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.set-field > label { display: block; font-size: 12px; margin-bottom: 3px; }
+.set-field .help { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
 .set-field input[type="text"],
 .set-field input[type="password"],
 .set-field input[type="number"],
@@ -135,7 +135,7 @@ select#lang-select:disabled { opacity: 0.6; cursor: not-allowed; }
   width: 100%; box-sizing: border-box;
   background: var(--panel-2); color: var(--fg);
   border: 1px solid var(--border); border-radius: 6px;
-  padding: 7px 10px; font-family: inherit; font-size: 13px; outline: none;
+  padding: 7px 10px; font-family: inherit; font-size: 12px; outline: none;
   transition: border-color 0.15s;
 }
 .set-field input:focus, .set-field select:focus { border-color: var(--accent); }
@@ -150,36 +150,38 @@ select#lang-select:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 12px 18px; border-top: 1px solid var(--border);
 }
 .modal-foot[hidden] { display: none; }
-.settings-msg { font-size: 12px; color: var(--muted); }
+.settings-msg { font-size: 11px; color: var(--muted); }
 .settings-msg.ok { color: var(--ok); }
 .settings-msg.err { color: var(--danger); }
 .modal-foot-actions { display: flex; gap: 8px; margin-left: auto; }
 .btn-primary {
   padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer;
   background: var(--accent); color: #1a0e2e; font-weight: 600; font-family: inherit;
+  font-size: 12px;
 }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-ghost {
   padding: 7px 14px; border-radius: 6px; cursor: pointer; font-family: inherit;
   background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+  font-size: 12px;
 }
 .btn-ghost:hover { border-color: var(--accent); }
 
 /* Changelog — light markdown render */
-.changelog { font-size: 13px; line-height: 1.6; }
-.changelog h1 { font-size: 16px; margin: 0 0 12px; }
+.changelog { font-size: 12px; line-height: 1.6; }
+.changelog h1 { font-size: 14px; margin: 0 0 12px; }
 .changelog h2 {
-  font-size: 14px; margin: 18px 0 8px; color: var(--accent);
+  font-size: 13px; margin: 18px 0 8px; color: var(--accent);
   border-bottom: 1px solid var(--border); padding-bottom: 4px;
 }
-.changelog h3 { font-size: 13px; margin: 12px 0 6px; color: var(--accent-2); }
+.changelog h3 { font-size: 12px; margin: 12px 0 6px; color: var(--accent-2); }
 .changelog ul { margin: 6px 0; padding-left: 20px; }
 .changelog li { margin: 3px 0; }
 .changelog p { margin: 6px 0; color: var(--muted); }
 .changelog a { color: var(--accent-2); }
 .changelog code {
   background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 4px; padding: 1px 5px; font-size: 12px;
+  border-radius: 4px; padding: 1px 5px; font-size: 11px;
 }
 .changelog strong { color: var(--fg); }
 
@@ -298,3 +300,27 @@ footer {
 }
 .a11y-badge::before { content: "♿ "; }
 .a11y-badge[hidden] { display: none; }
+
+/* AST (Auto Self-Training) badge — clickable, colour-coded by state. */
+.ast-badge {
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  text-transform: uppercase; white-space: nowrap;
+  cursor: pointer; font-family: inherit;
+  background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--border);
+  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.ast-badge::before { content: "🧠 "; }
+.ast-badge[hidden] { display: none; }
+.ast-badge:hover { color: var(--fg); border-color: var(--accent); }
+/* idle = enabled but quiet; learning/consolidating/training light up. */
+.ast-badge.idle { color: var(--accent-2); border-color: var(--accent-2); }
+.ast-badge.learning {
+  color: #1a0e2e; background: var(--accent); border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(167,139,250,0.5);
+}
+.ast-badge.consolidating, .ast-badge.training {
+  color: #221a07; background: var(--caption); border-color: var(--caption);
+  box-shadow: 0 0 10px rgba(255,210,138,0.45);
+}

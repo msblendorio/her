@@ -1,3 +1,19 @@
+## 0.9.0
+
+- **Auto Self-Training (AST mode)** — *experimental, opt-in.* Samantha can learn
+  *how you talk* and mirror it. Phase 0 captures raw turns locally (secrets
+  redacted before they touch disk, retention + one-command wipe); Phase 1
+  distills a **Style Card** (length, register, emoji, languages, recurring
+  expressions) injected into both brains, with optional local few-shot retrieval
+  (`multilingual-e5-small`, the `ast` extra). Off by default and never records
+  silently: a 🧠 footer badge shows the state and toggles the master opt-in, and
+  `/ast` drives status / mode / consolidate / insights / forget. The deeper
+  on-device-LoRA phases (training, teacher/student router, personal eval) are
+  scaffolded for later.
+- Folded the optional local-voice libraries into the base `requirements.txt`
+  (and `pyproject.toml`), retiring `requirements-local.txt`, and bundled them
+  into the desktop app so voice can switch cloud→local without `pip`.
+
 ## 0.8.0
 
 - **Settings panel (⚙️).** A new gear button in the header opens a Preferences

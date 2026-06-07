@@ -29,6 +29,7 @@ personal, interlinked **knowledge wiki** she maintains across sessions.*
 | **World model**       | `WorldModel` interface in place with a mock implementation; ready to swap in Meta V-JEPA 2 (see `perception/world_model.py`)                                                                                                                            |
 | **UI**                | Single browser page with a text input bar for typing and speaking in parallel, a **📎 file-upload** button (read by Claude into the wiki), **slash commands** (`/help`, `/schedule`, `/pulse`, …) with autocomplete, real-time status indicators (`listening / seeing / thinking / speaking`), the running **OpenAI + Claude cost** in the footer, and a language selector (it / en / es / fr / de — default Italian) |
 | **Time-based autonomy** | **Schedule** fires tasks at fixed times (standard 5-field cron), and **Pulse** is an ambient check-in where Samantha decides on her own whether to say something — both managed from the text bar with `/schedule` and `/pulse`, active only while a session is open |
+| **Self-training (AST)** | *Experimental, opt-in.* She can learn **how you talk** — preferred length, register, emoji, languages, recurring expressions — into a **Style Card** injected into both brains so she mirrors your voice. Raw turns are captured locally (secrets redacted, retention + one-command wipe), entirely on-device. Managed with `/ast` and a 🧠 footer badge; the deeper on-device-LoRA phases are on the roadmap |
 
 
 > The assistant is **session-based**: nothing runs until you open the page
@@ -94,7 +95,8 @@ the voice locally while still using Claude for deep work, or go fully offline.
 ```bash
 # 1. Local STT/TTS/VAD libraries (espeak bundled — no brew needed; the
 #    ~340 MB Kokoro voice model downloads automatically on first use)
-pip install -r requirements-local.txt
+#    These ship in requirements.txt — already covered by the base install.
+pip install -r requirements.txt
 
 # 2. The local LLM brain — install Ollama, then pull the models
 #    https://ollama.com
@@ -302,6 +304,7 @@ to complete, `Esc` to dismiss. The bar works even before you press *Start*, so
 | `/schedule …` | Manage scheduled tasks — see below |
 | `/pulse …` | Manage the ambient check-in — see below |
 | `/forge …` | Teach / list skills by describing them (Skill Forge) — see below |
+| `/ast …` | Auto Self-Training: opt-in, status, mode, consolidate, insights, forget — see below |
 
 ---
 
@@ -401,6 +404,48 @@ interval are saved per-user in `data/preferences.json`.
 /pulse on   ·  /pulse off
 /pulse 120          # set the interval to 120s and turn it on
 ```
+
+---
+
+## Auto Self-Training (AST mode) — *experimental, opt-in*
+
+Samantha can turn your conversations into a personal learning signal — the first
+steps toward a local model that learns to *be her, for you*. Two phases ship
+today (zero-GPU, fully on-device, **opt-in**); the deeper on-device-LoRA phases
+are scaffolded on the roadmap.
+
+- **Capture (Phase 0).** With your explicit opt-in, raw turns are saved locally
+  under `data/conversations/`, with secrets — API keys, passwords (including
+  spoken ones like *"my password is…"*), card numbers — **redacted before they
+  ever touch disk**, plus a retention window and one-command wipe.
+- **Style Card + few-shot (Phase 1).** A consolidation pass distills *how you
+  talk* — preferred length, register, emoji, languages, recurring expressions —
+  into a compact **Style Card** injected into both brains so she mirrors your
+  voice. Optionally a small local embedder (`multilingual-e5-small`) adds dynamic
+  few-shot examples drawn from your own past exchanges.
+
+**Nothing is recorded silently.** AST is off by default; a persistent **🧠 badge**
+in the footer shows its state (`off` / `idle` / `learning` / `consolidating`) and
+clicking it toggles the master opt-in. Privacy is the whole point: local-only,
+opt-in capture, secret redaction, retention, and unlearning.
+
+```text
+/ast                          # status
+/ast on   ·   /ast off        # master opt-in
+/ast capture on | off         # opt in to raw-turn capture
+/ast mode prompt              # off | prompt | lora_shadow | lora_primary
+/ast consolidate              # rebuild the Style Card now
+/ast insights                 # "what I've learned about you"
+/ast forget [all | <session>] # delete captured data (right to be forgotten)
+```
+
+Few-shot retrieval needs the optional extra (`pip install -e ".[ast]"`); without
+it, capture and the Style Card still work and few-shot simply stays off. The
+on-device LoRA training, the teacher/student reasoning router, and the personal
+held-out eval (YouBench) are **scaffolded but not yet active**.
+
+> AST is **experimental**: today it shapes *prompts only* (no weights are trained
+> yet), it is opt-in, and it changes nothing unless you enable it.
 
 ---
 
@@ -510,6 +555,8 @@ Sensible defaults are in `.env.example`. The interesting knobs:
 | `SCHEDULE_PATH`           | `data/schedule.json`| Where scheduled jobs are persisted                                                                                            |
 | `SCHEDULE_POLL_INTERVAL`  | `20`                | Seconds between schedule polls — keep under 60 so minute-granular cron never slips                                             |
 | `PULSE_DEFAULT_INTERVAL_S`| `180`               | Default Pulse cadence in seconds; live on/off + interval live in `data/preferences.json` (toggled via `/pulse`)               |
+| `AST_RETENTION_DAYS`      | `90`                | AST: days before captured raw turns are auto-pruned. Master/capture/mode toggles live in `data/preferences.json` (via `/ast`) |
+| `AST_EMBEDDING_MODEL`     | `intfloat/multilingual-e5-small` | AST: local embedder for few-shot retrieval (needs the optional `ast` extra)                                      |
 
 
 ---

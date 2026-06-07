@@ -23,7 +23,7 @@ class SessionState:
     accessibility: bool = False
 
     def snapshot(self) -> dict:
-        return {
+        snap = {
             "active": self.active,
             "listening": self.listening,
             "thinking": self.thinking,
@@ -34,6 +34,14 @@ class SessionState:
             "usage": usage.snapshot(),
             "accessibility": self.accessibility,
         }
+        # AST status for the header badge (off | idle | learning | consolidating
+        # | training). Late import keeps core/state free of an import cycle.
+        try:
+            from ..ast import ast_manager
+            snap["ast"] = ast_manager.status()
+        except Exception:
+            pass
+        return snap
 
 
 state = SessionState()

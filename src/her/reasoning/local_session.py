@@ -185,7 +185,7 @@ class LocalRealtimeSession:
             except ImportError as e:
                 raise RuntimeError(
                     "faster-whisper is not installed — run "
-                    "`pip install -r requirements-local.txt` to use VOICE_BACKEND=local"
+                    "`pip install -r requirements.txt` to use VOICE_BACKEND=local"
                 ) from e
             self._stt = WhisperModel(
                 settings.local_stt_model,
@@ -201,7 +201,7 @@ class LocalRealtimeSession:
             except ImportError as e:
                 raise RuntimeError(
                     "kokoro-onnx is not installed — run "
-                    "`pip install -r requirements-local.txt` to use VOICE_BACKEND=local"
+                    "`pip install -r requirements.txt` to use VOICE_BACKEND=local"
                 ) from e
             model_path, voices_path = self._ensure_tts_files()
             self._tts = Kokoro(model_path, voices_path)
@@ -232,7 +232,7 @@ class LocalRealtimeSession:
             except ImportError as e:
                 raise RuntimeError(
                     "webrtcvad is not installed — run "
-                    "`pip install -r requirements-local.txt` to use VOICE_BACKEND=local"
+                    "`pip install -r requirements.txt` to use VOICE_BACKEND=local"
                 ) from e
             self._vad_engine = webrtcvad.Vad(int(settings.local_vad_aggressiveness))
         return self._vad_engine

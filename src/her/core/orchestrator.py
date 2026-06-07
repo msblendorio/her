@@ -14,6 +14,7 @@ from time import monotonic
 
 from ..agentic.screen import read_screen
 from ..agentic.skills.runtime import store as skill_store
+from ..ast import ast_manager
 from ..config import settings
 from ..i18n import resolve as resolve_lang, wiki_overview_block
 from ..memory.wiki.store import store as wiki_store
@@ -69,6 +70,11 @@ class Orchestrator:
         # once and re-saved every time set_accessibility() is called.
         self.prefs_store = PreferencesStore(settings.preferences_path)
         self._prefs = self.prefs_store.load()
+        # AST shares this same Preferences object + store so its master/capture/
+        # mode switches persist alongside the others without clobbering them.
+        ast_manager.bind(self._prefs, self.prefs_store)
+        # Stable id for the current session's raw-turn capture file.
+        self._session_id: str = ""
 
         # Persistent character profile (slow signal) + live empathy tracker
         # (fast signal). The store is created unconditionally so that the
@@ -91,6 +97,7 @@ class Orchestrator:
                 log.info("session already active, ignoring start()")
                 return
             self._session_language = resolve_lang(language or settings.assistant_language)
+            self._session_id = datetime.now().strftime("%Y%m%dT%H%M%S")
             local_voice = settings.voice_backend.strip().lower() == "local"
             log.info(
                 "starting session (lang=%s, voice=%s)",
@@ -122,6 +129,14 @@ class Orchestrator:
                         extra = f"{extra}\n\n{overview}" if extra else overview
                 except Exception:
                     log.exception("wiki: could not build recall overview")
+
+            # AST (Phase 1): append the Style Card + few-shot block so both
+            # teachers answer in the user's own voice. Empty unless AST is
+            # enabled and its mode requests prompt-level personalization.
+            style = ast_manager.style_block(self._session_language)
+            if style:
+                extra = f"{extra}\n\n{style}" if extra else style
+                log.info("ast: injected Style Card into the system prompt")
 
             # Start the session pre-configured with the user's persisted
             # accessibility preference, so a visually impaired user does not
@@ -186,6 +201,11 @@ class Orchestrator:
                 if settings.vision_enabled and settings.visual_memory_enabled:
                     self.visual_collector = VisualCollector()
                     await self.visual_collector.start()
+
+            # AST raw-turn capture (Phase 0). Opt-in; no-op unless the user has
+            # enabled AST and the capture toggle. Started after the empathy
+            # tracker so it can tag turns with the live mood.
+            await ast_manager.on_session_start(self._session_id, self._session_language)
 
             self._vision_task = asyncio.create_task(
                 run_vision_loop(self._on_caption), name="vision-loop"
@@ -266,6 +286,13 @@ class Orchestrator:
             if self.empathy is not None:
                 await self.empathy.stop()
                 self.empathy = None
+
+            # Stop AST capture and (if due) trigger a consolidation pass. Safe
+            # to call unconditionally — it's a no-op when AST/capture is off.
+            try:
+                await ast_manager.on_session_end()
+            except Exception:
+                log.exception("ast: on_session_end failed")
 
             # Drain the transcript collector and (best-effort) summarize.
             turns: list[tuple[str, str]] = []

@@ -171,5 +171,52 @@ class Settings(BaseSettings):
     # in preferences.json (toggled via the /pulse command).
     pulse_default_interval_s: float = 180.0
 
+    # ── AST — Auto Self-Training mode (see future-features/AST_MODE_PLAN.md) ──
+    # Turns every conversation with the frontier models into training signal for
+    # a local model that learns to "be Samantha — for you". Phases 0+1 (raw
+    # capture + Style Card + few-shot retrieval) are implemented and zero-GPU;
+    # the LoRA/MLX phases (2-4) are scaffolded but not yet active.
+    #
+    # The privacy-sensitive live switches (master on/off, raw-capture opt-in,
+    # mode) are persisted per-user in preferences.json — like accessibility and
+    # pulse — so the values below are only the defaults/cold-start. Everything
+    # here stays off until the user opts in: nothing is ever recorded silently.
+    ast_enabled: bool = False                          # master switch (default)
+    ast_capture_enabled: bool = False                  # opt-in raw turn capture (T1)
+    ast_mode: str = "off"                              # off | prompt | lora_shadow | lora_primary
+    ast_retention_days: int = 90                       # raw conversations auto-pruned after this
+    # Consolidation (slow loop): "nightly" if idle+charging, OR after N sessions,
+    # whichever comes first. In Phase 1 consolidation rebuilds the Style Card and
+    # re-indexes the retrieval store; the heavier reflection/training is Phase 2+.
+    ast_consolidate_cadence: str = "nightly_or_after_n"
+    ast_consolidate_after_n: int = 5                   # sessions before a consolidation pass
+    ast_train_after_n: int = 10                        # sessions before a (future) training run
+    ast_router_policy: str = "conservative"            # teacher/student routing (Phase 3)
+
+    # Data layout (all under data/, which is gitignored). Raw turns live in
+    # their own per-session jsonl; everything else under data/ast/.
+    ast_path: str = "data/ast"
+    ast_conversations_path: str = "data/conversations"
+
+    # Model tiers (forward-looking; used by Phase 2+ training/serving). "auto"
+    # picks the largest size that fits the detected RAM (16 GB → 3B).
+    ast_base_model: str = "auto"
+    ast_base_model_16gb: str = "qwen2.5-3b-instruct-4bit"
+    ast_train_model_floor: str = "qwen2.5-1.5b-instruct"
+
+    # Phase 1 retrieval: a small local multilingual embedder (~118M) + a light
+    # on-disk index. Optional dependency (the `ast` extra); if it isn't
+    # installed, capture and the Style Card still work and retrieval simply
+    # stays off (few-shot selection is skipped). See src/her/ast/retrieval.py.
+    ast_embedding_model: str = "intfloat/multilingual-e5-small"
+    ast_style_token_budget: int = 800                  # cap on the Style Card block size
+    ast_fewshot_k: int = 3                             # few-shot examples injected per session
+
+    # Privacy. Encryption-at-rest is a forward-looking default (key in the macOS
+    # Keychain); the Phase 0 store currently redacts secrets before writing and
+    # honours retention/wipe. v1 is single-profile (the app assumes one user).
+    ast_encrypt_at_rest: bool = True
+    ast_single_profile: bool = True
+
 
 settings = Settings()

@@ -10,6 +10,7 @@ const camEl = document.getElementById("cam");
 const btn = document.getElementById("toggle-btn");
 const statusLine = document.getElementById("status-line");
 const a11yBadge = document.getElementById("a11y-badge");
+const astBadge = document.getElementById("ast-badge");
 const cfgLine = document.getElementById("cfg-line");
 const indicators = Array.from(document.querySelectorAll("#indicators .ind"));
 const langSelect = document.getElementById("lang-select");
@@ -52,6 +53,8 @@ const UI_STRINGS = {
     who_user: "tu  ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "errore",
     a11y_on: "modalità accessibilità",
+    ast_idle: "AST attivo", ast_learning: "AST · apprendo",
+    ast_consolidating: "AST · consolido", ast_training: "AST · alleno",
     send: "invia", text_placeholder: "scrivi un messaggio o / per i comandi…",
     text_needs_session: "premi Start (o /start) per parlare con Samantha.",
     schedule_fired: "⏰ attività pianificata [{when}]: {prompt}",
@@ -81,6 +84,8 @@ const UI_STRINGS = {
     who_user: "you ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "error",
     a11y_on: "accessibility mode",
+    ast_idle: "AST on", ast_learning: "AST · learning",
+    ast_consolidating: "AST · consolidating", ast_training: "AST · training",
     send: "send", text_placeholder: "type a message, or / for commands…",
     text_needs_session: "press Start (or /start) to talk to Samantha.",
     schedule_fired: "⏰ scheduled task [{when}]: {prompt}",
@@ -110,6 +115,8 @@ const UI_STRINGS = {
     who_user: "tú  ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "error",
     a11y_on: "modo accesibilidad",
+    ast_idle: "AST activo", ast_learning: "AST · aprendo",
+    ast_consolidating: "AST · consolido", ast_training: "AST · entreno",
     send: "enviar", text_placeholder: "escribe un mensaje o / para los comandos…",
     text_needs_session: "pulsa Start (o /start) para hablar con Samantha.",
     schedule_fired: "⏰ tarea programada [{when}]: {prompt}",
@@ -139,6 +146,8 @@ const UI_STRINGS = {
     who_user: "toi ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "erreur",
     a11y_on: "mode accessibilité",
+    ast_idle: "AST actif", ast_learning: "AST · j'apprends",
+    ast_consolidating: "AST · je consolide", ast_training: "AST · entraînement",
     send: "envoyer", text_placeholder: "écris un message, ou / pour les commandes…",
     text_needs_session: "appuie sur Start (ou /start) pour parler à Samantha.",
     schedule_fired: "⏰ tâche programmée [{when}] : {prompt}",
@@ -168,6 +177,8 @@ const UI_STRINGS = {
     who_user: "du  ›", who_asst: "her ›", who_vis: "vis ›", who_sys: "sys ›", who_mem: "mem ›", who_err: "err ›", who_act: "act ›",
     tool_ok: "ok", tool_fail: "Fehler",
     a11y_on: "Barrierefreiheit",
+    ast_idle: "AST aktiv", ast_learning: "AST · lerne",
+    ast_consolidating: "AST · konsolidiere", ast_training: "AST · trainiere",
     send: "senden", text_placeholder: "schreib eine Nachricht, oder / für Befehle…",
     text_needs_session: "drück Start (oder /start), um mit Samantha zu sprechen.",
     schedule_fired: "⏰ geplante Aufgabe [{when}]: {prompt}",
@@ -301,6 +312,27 @@ function renderA11yBadge(snap) {
   if (on) a11yBadge.textContent = t("a11y_on");
 }
 
+// AST badge: hidden when off; otherwise colour-coded by state. `ast` is the
+// status dict {enabled, capture, mode, status}. Accepts either a full snapshot
+// (reads snap.ast) or the status dict directly (from ast_status events).
+let lastAstStatus = null;
+function renderAstBadge(astOrSnap) {
+  if (!astBadge) return;
+  const a = astOrSnap && astOrSnap.ast ? astOrSnap.ast : astOrSnap;
+  if (!a || typeof a !== "object") return;
+  lastAstStatus = a;
+  const st = a.status || (a.enabled ? "idle" : "off");
+  astBadge.classList.remove("idle", "learning", "consolidating", "training");
+  // Always visible (persistent privacy indicator + the click target that
+  // enables AST the first time). When off it shows faint, just "AST".
+  astBadge.hidden = false;
+  if (st === "off") { astBadge.textContent = "AST"; return; }
+  astBadge.classList.add(st);
+  const key = { idle: "ast_idle", learning: "ast_learning",
+                consolidating: "ast_consolidating", training: "ast_training" }[st];
+  astBadge.textContent = key ? t(key) : "AST";
+}
+
 function renderStatusBar(snap) {
   const u = snap.usage || {};
   const tok = u.tokens || {};
@@ -334,6 +366,7 @@ function renderStatusBar(snap) {
     `↑ ${audioIn} ${audioLbl} · ↓ ${audioOut} ${audioLbl} · ` +
     `${u.responses || 0} ${t("turns")}${cached}`;
   renderA11yBadge(snap);
+  renderAstBadge(snap);
 }
 
 function appendLine(kind, who, text) {
@@ -506,6 +539,9 @@ async function startSession() {
         updateIndicators(m.data);
         renderStatusBar(m.data);
         break;
+      case "ast_status":
+        renderAstBadge(m.data);
+        break;
       case "error":
         appendLine("err", t("who_err"), JSON.stringify(m.data));
         break;
@@ -624,6 +660,7 @@ const CMD_TEXT = {
   schedule: "tasks scheduled at fixed times (cron)",
   pulse: "periodic presence: on/off or interval",
   forge: "teach a new skill by describing it (no demo)",
+  ast: "auto self-training: capture + style card + few-shot",
 };
 function cmdDesc(name) {
   return CMD_TEXT[name.slice(1)] || name.slice(1);
@@ -760,6 +797,89 @@ async function cmdPulse(args) {
   renderPulse(data);
 }
 
+// ── AST (Auto Self-Training) ──
+function renderAstStatus(d) {
+  sysLine(
+    `AST: ${d.enabled ? "on" : "off"} · ` +
+    `capture ${d.capture ? "on" : "off"} · ` +
+    `mode ${d.mode || "off"} · ` +
+    `${d.status || "—"}`
+  );
+}
+
+function renderAstInsights(d) {
+  renderAstStatus(d);
+  const s = d.stats || {};
+  sysLine(`  · dati: ${s.sessions || 0} sessioni, ${s.turns || 0} turni`);
+  sysLine(`  · retrieval: ${d.retrieval_available ? "disponibile" : "off (manca l'extra `ast`)"}`);
+  const c = d.style_card;
+  if (c) {
+    sysLine(`  · Style Card v${c.version}: lunghezza ${c.length_pref}, registro ${c.register}` +
+            `${c.emoji ? ", emoji" : ""}`);
+    if (c.top_phrases && c.top_phrases.length) {
+      sysLine(`  · espressioni: ${c.top_phrases.slice(0, 8).join(", ")}`);
+    }
+    if (c.voice) sysLine(`  · voce: ${c.voice}`);
+  } else {
+    sysLine("  · Style Card: non ancora costruita (serve una consolidazione)");
+  }
+}
+
+async function cmdAst(args) {
+  const sub = (args[0] || "status").toLowerCase();
+
+  if (sub === "status") { renderAstStatus(await apiGet("/api/ast")); return; }
+  if (sub === "insights") { renderAstInsights(await apiGet("/api/ast")); return; }
+
+  if (sub === "on" || sub === "off") {
+    const { data } = await apiSend("/api/ast", "POST", { enabled: sub === "on" });
+    renderAstStatus(data); renderAstBadge(data); return;
+  }
+  if (sub === "capture") {
+    const v = (args[1] || "").toLowerCase();
+    if (v !== "on" && v !== "off") { errLine("uso: /ast capture [on | off]"); return; }
+    const { data } = await apiSend("/api/ast", "POST", { capture: v === "on" });
+    renderAstStatus(data); renderAstBadge(data); return;
+  }
+  if (sub === "mode") {
+    const m = (args[1] || "").toLowerCase();
+    const allowed = ["off", "prompt", "lora_shadow", "lora_primary"];
+    if (!allowed.includes(m)) { errLine(`uso: /ast mode [${allowed.join(" | ")}]`); return; }
+    const { data } = await apiSend("/api/ast", "POST", { mode: m });
+    renderAstStatus(data); renderAstBadge(data); return;
+  }
+  if (sub === "consolidate" || sub === "train") {
+    sysLine(`AST: ${sub === "train" ? "training" : "consolidamento"} in corso…`);
+    const { data } = await apiSend("/api/ast", "POST", { action: sub });
+    const r = data.result || {};
+    if (!r.ok) { errLine(r.error || "azione non riuscita"); }
+    else if (sub === "consolidate") {
+      sysLine(`AST: consolidato — ${r.turns || 0} turni, indicizzati ${r.indexed || 0}`);
+    }
+    if (data.insights) renderAstBadge(data.insights);
+    return;
+  }
+  if (sub === "forget") {
+    const target = args[1] || "all";
+    const { data } = await apiSend("/api/ast", "POST", { action: "forget", target });
+    const r = data.result || {};
+    sysLine(`AST: dimenticati ${r.removed || 0} (${r.target})`);
+    if (data.insights) renderAstBadge(data.insights);
+    return;
+  }
+  errLine(`unknown command: /ast ${sub} — try /help`);
+}
+
+// Click the header badge to toggle the AST master opt-in (privacy gate).
+if (astBadge) {
+  astBadge.addEventListener("click", async () => {
+    const enable = !(lastAstStatus && lastAstStatus.enabled);
+    const { data } = await apiSend("/api/ast", "POST", { enabled: enable });
+    renderAstBadge(data);
+    renderAstStatus(data);
+  });
+}
+
 // A skill forged in the terminal but not yet saved: {name, description,
 // script, summary}. The preview/confirm split mirrors the conversational
 // forge_session so nothing lands on disk without an explicit "save".
@@ -839,6 +959,7 @@ const COMMANDS = [
   { name: "/schedule", args: "[list | add <cron> | <text> | rm <id> | on|off <id>]", run: cmdSchedule },
   { name: "/pulse", args: "[on | off | <seconds>]", run: cmdPulse },
   { name: "/forge", args: "[<name> | <description> | save | cancel | rm <slug>]", run: cmdForge },
+  { name: "/ast", args: "[status | on|off | capture on|off | mode <m> | consolidate | insights | forget]", run: cmdAst },
 ];
 
 async function handleCommand(raw) {

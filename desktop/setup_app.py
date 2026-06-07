@@ -118,6 +118,23 @@ OPTIONS = {
         "ddgs",
         "pynput",
         "webview",
+        # Free, on-device voice backend (VOICE_BACKEND=local). Everything here is
+        # imported lazily in her.reasoning.local_session, so py2app's static
+        # modulegraph never sees it — list each package and its native deps
+        # explicitly, including the data packages that carry bundled dylibs/data
+        # (libsndfile, espeak-ng) so a non-technical user can switch cloud→local
+        # inside the packaged app without ever running pip.
+        "faster_whisper",
+        "kokoro_onnx",
+        "ctranslate2",      # faster-whisper inference engine (native _ext.so)
+        "onnxruntime",      # kokoro + faster-whisper runtime (native, capi/*.dylib)
+        "av",               # PyAV — audio decode for faster-whisper (bundles ffmpeg)
+        "espeakng_loader",  # ships libespeak-ng.dylib + espeak-ng-data
+        "phonemizer",       # kokoro grapheme→phoneme
+        "_soundfile_data",  # ships libsndfile_arm64.dylib for soundfile
+        "cffi",             # soundfile's FFI layer
+        "huggingface_hub",  # faster-whisper model download at runtime
+        "tqdm",
     ],
     "includes": [
         "her.main",
@@ -135,6 +152,10 @@ OPTIONS = {
         "her.reasoning",
         "her.voice",
         "her.ui",
+        # Single-module C extensions of the local voice stack (not packages).
+        "webrtcvad",        # turn detection (C extension module)
+        "soundfile",        # audio I/O (module + _soundfile_data above)
+        "_cffi_backend",    # cffi's compiled backend
     ],
     # Trim the bundle: things we don't use.
     "excludes": [
